@@ -2,42 +2,78 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
+
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
-type parameter struct {
-	Key, Value string
+type AppConfig struct {
+	ConfigFile string
+	Server     ServerConfig  `yaml:"server,omitempty"`
+	Clients    ClientsConfig `yaml:",omitempty"` // TODO!
 }
 
-var config map[string]parameter
-var err error
-
-func configDefault() {
-	config = make(map[string]parameter)
-	config["listen_port"] = parameter{
-		"PK_PORT", ":8080",
-	}
-	config["proxy_url"] = parameter{
-		"PK_PROXY_URL", "http://localhost:9090",
-	}
+type ServerConfig struct {
+	Port  string
+	Proxy string
+	Auth  []string
 }
 
-func configCheckEnv(p parameter) {
-	if value, ok := os.LookupEnv(p.Key); ok {
-		p.Value = value
-	}
+type ClientsConfig struct {
 }
 
-func configInit() {
-	log.Printf("INFO: Config initialisation.\n")
-	configDefault()
-	for p := range config {
-		configCheckEnv(config[p])
-		log.Printf("INFO: %s = %s\n", config[p].Key, config[p].Value)
+var (
+	err error
+
+	cfg = AppConfig{
+		ConfigFile: "config.yaml",
+		Server: ServerConfig{
+			Port:  "8080",
+			Proxy: "http://localhost:9090",
+			Auth: []string{
+				"ip",
+			},
+		},
+	}
+)
+
+func main() {
+
+	// set config
+	c := kingpin.New(filepath.Base(os.Args[0]), "Auth-filter-reverse-proxy-server for Prometheus federate")
+
+	c.HelpFlag.Short('h')
+
+	// get configfile
+	c.Flag("configfile", "Configuration file path.").
+		Default("config.yaml").StringVar(&cfg.ConfigFile)
+
+	// read configfile
+	file, err := ioutil.ReadFile(cfg.ConfigFile)
+	if err != nil {
+		panic(err)
+	}
+	err = yaml.UnmarshalStrict(file, &cfg)
+	if err != nil {
+		log.Fatalf("cannot parse configfile: %v", err)
+	}
+
+	log.Printf("DEBUG: config \n%v\n", cfg.Server)
+
+	// set clients config from yaml
+
+	// start reverse proxy
+	http.HandleFunc("/federate", handleRequestAndRedirect)
+
+	if err := http.ListenAndServe(":"+cfg.Server.Port, nil); err != nil {
+		panic(err)
 	}
 }
 
@@ -52,7 +88,7 @@ func handleRequestAndRedirect(res http.ResponseWriter, req *http.Request) {
 			fmt.Println(err)
 		}
 		log.Printf("DEBUG: incoming request : %s\n", requestDump)
-		serveReverseProxy(config["proxy_url"].Value, res, req)
+		serveReverseProxy(cfg.Server.Proxy, res, req)
 	}
 
 }
@@ -80,15 +116,4 @@ func serveReverseProxy(target string, res http.ResponseWriter, req *http.Request
 	log.Printf("DEBUG: outgoing request : %s\n", requestDump)
 
 	proxy.ServeHTTP(res, req)
-}
-
-func main() {
-
-	configInit()
-
-	http.HandleFunc("/federate", handleRequestAndRedirect)
-
-	if err := http.ListenAndServe(config["listen_port"].Value, nil); err != nil {
-		panic(err)
-	}
 }
