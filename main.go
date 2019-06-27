@@ -85,17 +85,17 @@ func main() {
 		log.Fatalf("cannot parse configfile: %v", err)
 	}
 
-	log.Printf("DEBUG: config \n%v\n", Cfg.Server)
+	log.Printf("DEBUG: server config \n%v\n", Cfg.Server)
 
 	// set AuthSets from config
-	// Header Value-id map
+	// Header 'X-Prom-Liver-Id' Value-id map
 
 	// Basic base64-id map
 
 	// Bearer token-id map
 
 	// start reverse proxy
-	http.Handle("/federate", hFilterGet(
+	http.Handle("/federate", handleGet(
 		handleRequestAndRedirect(
 			Cfg.Server.Authentication,
 			Cfg.Server.Proxy)))
@@ -122,7 +122,7 @@ func handleRequestAndRedirect(isAuth bool, target string) http.Handler {
 }
 
 // filter non-GET requests
-func hFilterGet(h http.Handler) http.Handler {
+func handleGet(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
