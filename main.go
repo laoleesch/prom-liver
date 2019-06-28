@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -24,31 +25,13 @@ type ServerConfig struct {
 	Port           string `yaml:"port,omitempty"`
 	Proxy          string `yaml:"proxy,omitempty"`
 	Authentication bool   `yaml:"authentication,omitempty"`
-	// Authschemes []string `yaml:"authschemes,omitempty"`
+	HeaderName     string `yaml:"auth-header,omitempty"`
 }
 
 type ClientConfig struct {
 	ID    string     `yaml:"id"`
 	Auth  AuthSchema `yaml:"auth"`
-	Match MatchSet   `yaml:"match"`
-}
-
-type AuthSchema struct {
-	Header bool             `yaml:"header,omitempty"` //header 'X-Prom-Liver-Id' value
-	Basic  AuthSchemaBasic  `yaml:"basic,omitempty"`
-	Bearer AuthSchemaBearer `yaml:"bearer,omitempty"`
-}
-
-type AuthSchemaBasic struct {
-	User     string `yaml:"user,omitempty"`
-	Password string `yaml:"password,omitempty"`
-	// Base64   string `yaml:"base64,omitempty"`
-	File string `yaml:"file,omitempty"`
-}
-
-type AuthSchemaBearer struct {
-	Token string `yaml:"token,omitempty"`
-	File  string `yaml:"file,omitempty"`
+	Match []string   `yaml:"match"`
 }
 
 var (
@@ -61,19 +44,18 @@ var (
 			Port:           "8080",
 			Proxy:          "http://localhost:9090",
 			Authentication: true,
+			HeaderName:     "X-Prom-Liver-Id",
 		},
 	}
 )
 
 func main() {
 
-	// set config
 	c := kingpin.New(filepath.Base(os.Args[0]), "Auth-filter-reverse-proxy-server for Prometheus federate")
-
 	c.HelpFlag.Short('h')
 
 	// get configfile
-	c.Flag("configfile", "Configuration file path.").StringVar(&Cfg.ConfigFile)
+	c.Flag("c", "Configuration file path.").StringVar(&Cfg.ConfigFile)
 
 	// read configfile
 	file, err := ioutil.ReadFile(Cfg.ConfigFile)
@@ -84,21 +66,38 @@ func main() {
 	if err != nil {
 		log.Fatalf("cannot parse configfile: %v", err)
 	}
+	log.Printf("Server config \n%v\n", Cfg.Server)
 
-	log.Printf("DEBUG: server config \n%v\n", Cfg.Server)
-
-	// set AuthSets from config
-	// Header 'X-Prom-Liver-Id' Value-id map
-
-	// Basic base64-id map
-
-	// Bearer token-id map
+	// set inMem auth maps from config
+	if Cfg.Server.Authentication {
+		authMemBasicMap = make(map[string]string)
+		authMemBearerMap = make(map[string]string)
+		for _, c := range Cfg.Clients {
+			// Header id set for Auth-enabled-cases
+			if c.Auth.Header {
+				authMemHeaderSet = append(authMemHeaderSet, c.ID)
+			}
+			// Basic base64-id map
+			if c.Auth.Basic.User != "" && c.Auth.Basic.Password != "" {
+				strb := []byte(c.Auth.Basic.User + ":" + c.Auth.Basic.Password)
+				str := base64.StdEncoding.EncodeToString(strb)
+				authMemBasicMap[str] = c.ID
+			}
+			// Bearer token-id map
+			if c.Auth.Bearer.Token != "" {
+				authMemBearerMap[c.Auth.Bearer.Token] = c.ID
+			}
+		}
+	}
+	// log.Printf("DEBUG: Auth Basic : %v\n\n", authMemBasicMap)
+	// log.Printf("DEBUG: Auth Bearer : %v\n\n", authMemBearerMap)
+	// log.Printf("DEBUG: Auth headers : %v\n\n", authMemHeaderSet)
 
 	// start reverse proxy
 	http.Handle("/federate", handleGet(
 		handleRequestAndRedirect(
 			Cfg.Server.Authentication,
-			Cfg.Server.Proxy)))
+			serveReverseProxy(Cfg.Server.Proxy))))
 
 	if err := http.ListenAndServe(":"+Cfg.Server.Port, nil); err != nil {
 		panic(err)
@@ -106,7 +105,7 @@ func main() {
 }
 
 // main "handler"
-func handleRequestAndRedirect(isAuth bool, target string) http.Handler {
+func handleRequestAndRedirect(isAuth bool, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestDump, err := httputil.DumpRequest(r, true)
 		if err != nil {
@@ -114,10 +113,11 @@ func handleRequestAndRedirect(isAuth bool, target string) http.Handler {
 		}
 		log.Printf("DEBUG: incoming request : %s\n", requestDump)
 
-		if !isAuth {
-			return //!TODO
-		}
-		CheckAuth(serveReverseProxy(target))
+		// if !isAuth {
+		// 	return //!TODO
+		// }
+		h = CheckAuth(h)
+		h.ServeHTTP(w, r)
 	})
 }
 
@@ -136,7 +136,6 @@ func handleGet(h http.Handler) http.Handler {
 func serveReverseProxy(target string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		url, _ := url.Parse(target)
-		log.Printf("DEBUG: reverse proxy url : %s\n", url)
 		proxy := httputil.NewSingleHostReverseProxy(url)
 
 		r.URL.Host = url.Host
@@ -144,12 +143,16 @@ func serveReverseProxy(target string) http.Handler {
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = url.Host
 
-		requestDump, err := httputil.DumpRequestOut(r, true)
-		if err != nil {
-			fmt.Println(err)
-		}
-		log.Printf("DEBUG: outgoing request : %s\n", requestDump)
+		requestDump(r, "outgoing request")
 
 		proxy.ServeHTTP(w, r)
 	})
+}
+
+func requestDump(r *http.Request, comment string) {
+	requestDump, err := httputil.DumpRequestOut(r, true)
+	if err != nil {
+		fmt.Println(err)
+	}
+	log.Printf("DEBUG: "+comment+" : %s\n", requestDump)
 }
