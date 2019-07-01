@@ -66,7 +66,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("cannot parse configfile: %v", err)
 	}
-	log.Printf("Server config \n%v\n", Cfg.Server)
+	log.Printf("Server config: \n")
+	log.Printf("port			: %v\n", Cfg.Server.Port)
+	log.Printf("proxy			: %v\n", Cfg.Server.Proxy)
+	log.Printf("authentication	: %v\n", Cfg.Server.Authentication)
+	log.Printf("header name		: %v\n", Cfg.Server.HeaderName)
+	log.Printf("\n")
 
 	// set inMem auth maps from config
 	authHeaderName = Cfg.Server.HeaderName

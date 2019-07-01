@@ -55,9 +55,6 @@ func CheckAuth(h http.Handler) http.Handler {
 				}
 			}
 		}
-
-		// requestDump(r, "I'm in CheckAuth")
-
 		auth := r.Header.Get("Authorization")
 		if len(auth) < 8 {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
@@ -78,7 +75,6 @@ func CheckAuth(h http.Handler) http.Handler {
 func basicAuthInMem(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		requestDump(r, "I'm in basicAuthInMem")
 		const prefix = "Basic "
 		if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
@@ -100,7 +96,6 @@ func basicAuthInMem(h http.Handler) http.Handler {
 func bearerAuthInMem(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		requestDump(r, "I'm in bearerAuthInMem")
 		const prefix = "Bearer "
 		if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
@@ -109,12 +104,9 @@ func bearerAuthInMem(h http.Handler) http.Handler {
 		if v, ok := authMemBearerMap[auth[7:]]; ok {
 			r.Header.Set("X-Prom-Liver-Id", v)
 		} else {
-			// w.Header().Set("WWW-Authenticate", `Bearer realm="Restricted"`)
-			// w.Header().Set("X-Prom-Liver-Id", "none")
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 			return
 		}
-
 		h.ServeHTTP(w, r)
 	})
 }

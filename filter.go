@@ -2,18 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
 
-// type MatchSet struct {
-// 	ID         string `yaml:"id"`
-// 	MatcherSet [][]*labels.Matcher
-// 	// Match []string `yaml:", inline"`
-// }
 type MatcherSet [][]*labels.Matcher
 
 var matchMemSet map[string]MatcherSet
@@ -32,11 +26,6 @@ func AddMemMatcherSets(id string, stringset []string) error {
 		}
 		matcherSets = append(matcherSets, matchers)
 	}
-	// matchMemSet = append(matchMemSet, MatchSet{
-	// 	id,
-	// 	matcherSets,
-	// })
-
 	matchMemSet[id] = matcherSets
 	return nil
 }
@@ -71,19 +60,13 @@ func FilterMatches(h http.Handler) http.Handler {
 
 		// compare matcherSets with white list
 
-		log.Printf("DEBUG: request matchset : %v\n", rMatcherSets)
-		log.Printf("DEBUG: compared matchset : %v\n", matchMemSet[rId])
-
-		// if len(rMatcherSets) < len(matchMemSet[rId]) {
-		// 	http.Error(w, fmt.Sprintf("Not enough matches. You should use one of these sets: %v",
-		// 		matchMemSet[rId]), http.StatusForbidden)
-		// 	return
-		// }
+		// log.Printf("DEBUG: request matchset : %v\n", rMatcherSets)
+		// log.Printf("DEBUG: compared matchset : %v\n", matchMemSet[rId])
 
 		for _, mr := range rMatcherSets {
 			for _, mm := range matchMemSet[rId] {
 				if containAll(mr, mm) {
-					log.Printf("DEBUG: found equal : %v\n", toParam(mr))
+					// log.Printf("DEBUG: found equal : %v\n", toParam(mr))
 					r.Form.Add("match[]", toParam(mr))
 					break
 				}
