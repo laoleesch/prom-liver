@@ -69,6 +69,7 @@ func main() {
 	log.Printf("Server config \n%v\n", Cfg.Server)
 
 	// set inMem auth maps from config
+	authHeaderName = Cfg.Server.HeaderName
 	if Cfg.Server.Authentication {
 		authMemBasicMap = make(map[string]string)
 		authMemBearerMap = make(map[string]string)

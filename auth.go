@@ -24,8 +24,13 @@ type AuthSchemaBearer struct {
 }
 
 var authMemHeaderSet []string          //client ids
+var authHeaderName string              //Header name
 var authMemBasicMap map[string]string  //base64(user:password):id
 var authMemBearerMap map[string]string //token:id
+
+func SetMemHeaderName(s string) {
+	authHeaderName = s
+}
 
 func SetMemHeaderSet(s []string) {
 	authMemHeaderSet = s
@@ -41,7 +46,15 @@ func SetMemBearerMap(m map[string]string) {
 
 func CheckAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// if i,
+		// check header
+		if header := r.Header.Get(authHeaderName); header != "" {
+			for i := range authMemHeaderSet {
+				if authMemHeaderSet[i] == header {
+					h.ServeHTTP(w, r)
+					return
+				}
+			}
+		}
 
 		// requestDump(r, "I'm in CheckAuth")
 
