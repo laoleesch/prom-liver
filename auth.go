@@ -28,19 +28,19 @@ var authHeaderName string              //Header name
 var authMemBasicMap map[string]string  //base64(user:password):id
 var authMemBearerMap map[string]string //token:id
 
-func SetMemHeaderName(s string) {
+func SetAuthMemHeaderName(s string) {
 	authHeaderName = s
 }
 
-func SetMemHeaderSet(s []string) {
+func SetAuthMemHeaderSet(s []string) {
 	authMemHeaderSet = s
 }
 
-func SetMemBasicMap(m map[string]string) {
+func SetAuthMemBasicMap(m map[string]string) {
 	authMemBasicMap = m
 }
 
-func SetMemBearerMap(m map[string]string) {
+func SetAuthMemBearerMap(m map[string]string) {
 	authMemBearerMap = m
 }
 

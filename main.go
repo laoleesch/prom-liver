@@ -94,6 +94,14 @@ func main() {
 	// log.Printf("DEBUG: Auth Bearer : %v\n\n", authMemBearerMap)
 	// log.Printf("DEBUG: Auth headers : %v\n\n", authMemHeaderSet)
 
+	// set inMem matcher sets from config
+	idHeaderName = Cfg.Server.HeaderName
+	matchMemSet = make(map[string]MatcherSet)
+	for _, c := range Cfg.Clients {
+		AddMemMatcherSets(c.ID, c.Match)
+		log.Printf("DEBUG: Matcher Set ID: %v Set: %v\n", c.ID, matchMemSet[c.ID])
+	}
+
 	http.Handle("/federate", handleGet(
 		CheckAuth(
 			FilterMatches(
