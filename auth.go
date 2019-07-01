@@ -81,10 +81,8 @@ func basicAuthInMem(h http.Handler) http.Handler {
 			return
 		}
 		if v, ok := authMemBasicMap[auth[6:]]; ok {
-			r.Header.Set("X-Prom-Liver-Id", v)
+			r.Header.Set(authHeaderName, v)
 		} else {
-			// w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			// w.Header().Set("X-Prom-Liver-Id", "none")
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 			return
 		}
@@ -102,7 +100,7 @@ func bearerAuthInMem(h http.Handler) http.Handler {
 			return
 		}
 		if v, ok := authMemBearerMap[auth[7:]]; ok {
-			r.Header.Set("X-Prom-Liver-Id", v)
+			r.Header.Set(authHeaderName, v)
 		} else {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 			return
