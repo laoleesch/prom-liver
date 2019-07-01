@@ -42,7 +42,7 @@ var (
 		ConfigFile: "config.yaml",
 		Server: ServerConfig{
 			Port:           "8080",
-			Proxy:          "http://localhost:9090",
+			Proxy:          "http://localhost:9090/",
 			Authentication: true,
 			HeaderName:     "X-Prom-Liver-Id",
 		},
@@ -93,32 +93,14 @@ func main() {
 	// log.Printf("DEBUG: Auth Bearer : %v\n\n", authMemBearerMap)
 	// log.Printf("DEBUG: Auth headers : %v\n\n", authMemHeaderSet)
 
-	// start reverse proxy
 	http.Handle("/federate", handleGet(
-		handleRequestAndRedirect(
-			Cfg.Server.Authentication,
-			serveReverseProxy(Cfg.Server.Proxy))))
+		CheckAuth(
+			FilterMatches(
+				serveReverseProxy(Cfg.Server.Proxy)))))
 
 	if err := http.ListenAndServe(":"+Cfg.Server.Port, nil); err != nil {
 		panic(err)
 	}
-}
-
-// main "handler"
-func handleRequestAndRedirect(isAuth bool, h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestDump, err := httputil.DumpRequest(r, true)
-		if err != nil {
-			fmt.Println(err)
-		}
-		log.Printf("DEBUG: incoming request : %s\n", requestDump)
-
-		// if !isAuth {
-		// 	return //!TODO
-		// }
-		h = CheckAuth(h)
-		h.ServeHTTP(w, r)
-	})
 }
 
 // filter non-GET requests
@@ -143,14 +125,14 @@ func serveReverseProxy(target string) http.Handler {
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = url.Host
 
-		requestDump(r, "outgoing request")
+		// requestDump(r, "outgoing request")
 
 		proxy.ServeHTTP(w, r)
 	})
 }
 
 func requestDump(r *http.Request, comment string) {
-	requestDump, err := httputil.DumpRequestOut(r, true)
+	requestDump, err := httputil.DumpRequest(r, true)
 	if err != nil {
 		fmt.Println(err)
 	}

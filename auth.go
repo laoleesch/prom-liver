@@ -43,19 +43,22 @@ func CheckAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// if i,
 
+		// requestDump(r, "I'm in CheckAuth")
+
 		auth := r.Header.Get("Authorization")
 		if len(auth) < 8 {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 			return
 		} else if strings.EqualFold(auth[:6], "Basic ") {
-			h = basicAuthInMem(h)
+			basicAuthInMem(h).ServeHTTP(w, r)
+			return
 		} else if strings.EqualFold(auth[:7], "Bearer ") {
-			h = bearerAuthInMem(h)
+			bearerAuthInMem(h).ServeHTTP(w, r)
+			return
 		} else {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 			return
 		}
-		h.ServeHTTP(w, r)
 	})
 }
 
