@@ -87,7 +87,7 @@ func containAll(mr, mm []*labels.Matcher) bool {
 
 	for _, mri := range mr {
 		for _, mmi := range mm {
-			if equalMatchers(mri, mmi) {
+			if suitMatchers(mri, mmi) {
 				count = count + 1
 			}
 			if count == len(mm) {
@@ -98,13 +98,17 @@ func containAll(mr, mm []*labels.Matcher) bool {
 	return false
 }
 
-func equalMatchers(mri, mmi *labels.Matcher) bool {
-	if mri.Name == mmi.Name &&
-		mri.Type == mmi.Type &&
-		mri.Value == mmi.Value {
-		return true
+func suitMatchers(mri, mmi *labels.Matcher) bool {
+	switch mri.Type.String() + " " + mmi.Type.String() {
+	case "= =~":
+		return mmi.Matches(mri.Value)
+	case "= !~":
+		return mmi.Matches(mri.Value)
+	default:
+		return mri.Name == mmi.Name &&
+			mri.Type == mmi.Type &&
+			mri.Value == mmi.Value
 	}
-	return false
 }
 
 func toParam(mr []*labels.Matcher) string {

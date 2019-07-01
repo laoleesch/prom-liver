@@ -2,9 +2,10 @@
 #  example config
 ##################################################
 server:
-  proxy: "http://localhost:9090/"
-  port: 8080
-  authentication: true
+  proxy: "http://localhost:9090/"   #default http://localhost:9090/
+  port: 8080                        #default 8080
+  authentication: true              #default true
+  auth-header: 'X-Prom-Liver-Id'    #default X-Prom-Liver-Id
 
 clients:
   - id: 'go-metrics'
@@ -14,7 +15,7 @@ clients:
         password: password1
       header: true
     match:
-      - '{project="go-metrics"}'
+      - '{project=~"go-.*"}'
       - '{env="test"}'
   - id: 'cadvisor'
     auth:
@@ -26,5 +27,5 @@ clients:
     match:
       - 'up{project="cadvisor", env="test"}'
     
-# curl -X GET http://localhost:8080/federate?match%5B%5D=%7Benv=%22test%22%7D -H "Authorization: Basic Y2Fkdmlzb3I6Y2Fkdmlzb3I="
+# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22go-metrics%22%7D -H "Authorization: Basic Y2Fkdmlzb3I6Y2Fkdmlzb3I=" -H "X-Prom-Liver-Id: go-metrics"
 # curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22cadvisor%22,%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"

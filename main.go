@@ -104,13 +104,19 @@ func main() {
 	matchMemSet = make(map[string]MatcherSet)
 	for _, c := range Cfg.Clients {
 		AddMemMatcherSets(c.ID, c.Match)
-		log.Printf("DEBUG: Matcher Set ID: %v Set: %v\n", c.ID, matchMemSet[c.ID])
+		log.Printf("DEBUG: Matcher Set ID: '%v' Set: %v\n", c.ID, matchMemSet[c.ID])
 	}
 
-	http.Handle("/federate", handleGet(
-		CheckAuth(
+	if Cfg.Server.Authentication {
+		http.Handle("/federate", handleGet(
+			CheckAuth(
+				FilterMatches(
+					serveReverseProxy(Cfg.Server.Proxy)))))
+	} else {
+		http.Handle("/federate", handleGet(
 			FilterMatches(
-				serveReverseProxy(Cfg.Server.Proxy)))))
+				serveReverseProxy(Cfg.Server.Proxy))))
+	}
 
 	if err := http.ListenAndServe(":"+Cfg.Server.Port, nil); err != nil {
 		panic(err)
@@ -145,6 +151,7 @@ func serveReverseProxy(target string) http.Handler {
 	})
 }
 
+// for debug :)
 func requestDump(r *http.Request, comment string) {
 	requestDump, err := httputil.DumpRequest(r, true)
 	if err != nil {
