@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -55,7 +56,13 @@ func main() {
 	c.HelpFlag.Short('h')
 
 	// get configfile
-	c.Flag("c", "Configuration file path.").StringVar(&Cfg.ConfigFile)
+	c.Flag("config", "Configuration file path.").Short('c').StringVar(&Cfg.ConfigFile)
+	_, err := c.Parse(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, errors.Wrapf(err, "Error parsing commandline arguments"))
+		c.Usage(os.Args[1:])
+		os.Exit(2)
+	}
 
 	// read configfile
 	file, err := ioutil.ReadFile(Cfg.ConfigFile)

@@ -12,4 +12,7 @@
 *.out
 
 # builded files
-main
+prom-liver
+
+# openshift, k8s etc
+openshift
