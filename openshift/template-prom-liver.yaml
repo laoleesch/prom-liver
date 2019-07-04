@@ -1,0 +1,121 @@
+# prom-liver openshift template
+apiVersion: v1
+kind: Template
+metadata:
+  name: prom-liver
+parameters:
+- name: APP_NAME
+  description: Имя приложения как основа наименования всего прочего.
+  displayName: Имя приложения
+  required: true
+  value: prom-liver
+objects:
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      app: prom-liver
+    name: prom-liver
+  spec:
+    replicas: 1
+    selector:
+      app: prom-liver
+      deploymentconfig: prom-liver
+    strategy:
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        labels:
+          app: prom-liver
+          deploymentconfig: prom-liver
+      spec:
+        containers:
+        - image: docker-registry.x5.ru/laoleesch/prom-liver:latest
+          args:
+          - '-c /config/config.yaml'
+          imagePullPolicy: Always
+          name: prom-liver
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          volumeMounts:
+          - mountPath: /config
+            name: prom-liver-config
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: prom-liver-config 
+          configMap:
+            defaultMode: 420
+            name: prom-liver 
+    test: false
+    triggers:
+    - type: ConfigChange
+  status: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewApp
+    labels:
+      app: prom-liver
+    name: prom-liver
+  spec:
+    ports:
+    - name: 80-tcp
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: prom-liver
+      deploymentconfig: prom-liver
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: prom-liver
+    labels:
+      app: prom-liver
+  spec:
+    to:
+      kind: Service
+      name: prom-liver
+      weight: 100
+    port:
+      targetPort: 80-tcp
+    wildcardPolicy: None
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: prom-liver
+  data:
+    config.yaml: |-
+      #prom-liver config
+      server:
+        proxy: "http://prom:9090/"   #default http://localhost:9090/
+        port: 8080                        #default 8080
+        authentication: true              #default true
+        auth-header: 'X-Prom-Liver-Id'    #default X-Prom-Liver-Id
+       
+      clients:
+        - id: 'sre-monitoring'
+          auth:
+            bearer:
+              token: 'eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.e---БЛАБЛАБЛА-----jWZwRYJE2ll2DaAaVA'
+          match:
+            - 'up{project="sentry"}'
+  status: {}
+  
