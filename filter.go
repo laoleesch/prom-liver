@@ -8,15 +8,18 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
+// MatcherSet is a union of match[]
 type MatcherSet [][]*labels.Matcher
 
 var matchMemSet map[string]MatcherSet
 var idHeaderName string //Header name
 
+// SetMatchMemHeaderName is like a setter
 func SetMatchMemHeaderName(s string) {
 	idHeaderName = s
 }
 
+// AddMemMatcherSets setter
 func AddMemMatcherSets(id string, stringset []string) error {
 	var matcherSets [][]*labels.Matcher
 	for _, s := range stringset {
@@ -30,6 +33,7 @@ func AddMemMatcherSets(id string, stringset []string) error {
 	return nil
 }
 
+// FilterMatches main function
 func FilterMatches(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -39,8 +43,8 @@ func FilterMatches(h http.Handler) http.Handler {
 			return
 		}
 
-		rId := r.Header.Get(idHeaderName)
-		if rId == "" {
+		rID := r.Header.Get(idHeaderName)
+		if rID == "" {
 			http.Error(w, fmt.Sprintf("ERROR: Empty header %v", idHeaderName), http.StatusBadRequest)
 			return
 		}
@@ -60,13 +64,9 @@ func FilterMatches(h http.Handler) http.Handler {
 
 		// compare matcherSets with white list
 
-		// log.Printf("DEBUG: request matchset : %v\n", rMatcherSets)
-		// log.Printf("DEBUG: compared matchset : %v\n", matchMemSet[rId])
-
 		for _, mr := range rMatcherSets {
-			for _, mm := range matchMemSet[rId] {
+			for _, mm := range matchMemSet[rID] {
 				if containAll(mr, mm) {
-					// log.Printf("DEBUG: found equal : %v\n", toParam(mr))
 					r.Form.Add("match[]", toParam(mr))
 					break
 				}
@@ -74,7 +74,7 @@ func FilterMatches(h http.Handler) http.Handler {
 		}
 
 		if len(r.Form["match[]"]) == 0 {
-			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", matchMemSet[rId]), http.StatusForbidden)
+			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", matchMemSet[rID]), http.StatusForbidden)
 			return
 		}
 

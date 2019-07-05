@@ -4,24 +4,29 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
-	"log"
+	stdlog "log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
+	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 	yaml "gopkg.in/yaml.v2"
 )
 
-type AppConfig struct {
-	ConfigFile string
-	Server     ServerConfig   `yaml:"server,omitempty"`
-	Clients    []ClientConfig `yaml:"clients"`
-}
+// AppConfig includes all config
+//type AppConfig struct {
+//	ConfigFile string
+//	Server     ServerConfig   `yaml:"server,omitempty"`
+//	Clients    []ClientConfig `yaml:"clients"`
+//}
 
+// ServerConfig includes only "server:" three
 type ServerConfig struct {
 	Port           string `yaml:"port,omitempty"`
 	Proxy          string `yaml:"proxy,omitempty"`
@@ -29,6 +34,7 @@ type ServerConfig struct {
 	HeaderName     string `yaml:"auth-header,omitempty"`
 }
 
+//ClientConfig includes configuration for each client
 type ClientConfig struct {
 	ID    string     `yaml:"id"`
 	Auth  AuthSchema `yaml:"auth"`
@@ -36,11 +42,16 @@ type ClientConfig struct {
 }
 
 var (
-	err error
+	err    error
+	logger kitlog.Logger
 
 	//Cfg default config
-	Cfg = AppConfig{
-		ConfigFile: "config.yaml",
+	Cfg = struct {
+		ConfigFile string
+		Loglevel   string
+		Server     ServerConfig   `yaml:"server,omitempty"`
+		Clients    []ClientConfig `yaml:"clients"`
+	}{
 		Server: ServerConfig{
 			Port:           "8080",
 			Proxy:          "http://localhost:9090/",
@@ -56,7 +67,8 @@ func main() {
 	c.HelpFlag.Short('h')
 
 	// get configfile
-	c.Flag("config", "Configuration file path.").Short('c').StringVar(&Cfg.ConfigFile)
+	c.Flag("config", "Configuration file").Short('c').Default("config.yaml").StringVar(&Cfg.ConfigFile)
+	c.Flag("loglevel", "Log level: debug, info, warning, error").Default("info").Short('l').StringVar(&Cfg.Loglevel)
 	_, err := c.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, errors.Wrapf(err, "Error parsing commandline arguments"))
@@ -64,21 +76,42 @@ func main() {
 		os.Exit(2)
 	}
 
+	// init logger
+	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
+	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestamp)
+	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
+	switch strings.ToLower(Cfg.Loglevel) {
+	case "debug":
+		logger = kitlog.With(logger, "caller", kitlog.DefaultCaller)
+		logger = level.NewFilter(logger, level.AllowDebug())
+	case "info":
+		logger = level.NewFilter(logger, level.AllowInfo())
+	case "warning":
+		logger = level.NewFilter(logger, level.AllowWarn())
+	case "error":
+		logger = level.NewFilter(logger, level.AllowError())
+	default:
+		level.Error(logger).Log("msg", "wrong log level name", "value", Cfg.Loglevel)
+		Cfg.Loglevel = "info"
+	}
+	level.Info(logger).Log("loglevel", Cfg.Loglevel)
+
 	// read configfile
 	file, err := ioutil.ReadFile(Cfg.ConfigFile)
 	if err != nil {
-		panic(err)
+		level.Error(logger).Log("msg", "cannot read config file", "err", err)
+		os.Exit(2)
 	}
 	err = yaml.UnmarshalStrict(file, &Cfg)
 	if err != nil {
-		log.Fatalf("cannot parse configfile: %v", err)
+		level.Error(logger).Log("msg", "cannot parse config file", "err", err)
+		os.Exit(2)
 	}
-	log.Printf("Server config: \n")
-	log.Printf("port			: %v\n", Cfg.Server.Port)
-	log.Printf("proxy			: %v\n", Cfg.Server.Proxy)
-	log.Printf("authentication	: %v\n", Cfg.Server.Authentication)
-	log.Printf("header name		: %v\n", Cfg.Server.HeaderName)
-	log.Printf("\n")
+	level.Info(logger).Log("configfile", Cfg.ConfigFile)
+	level.Info(logger).Log("server.port", Cfg.Server.Port)
+	level.Info(logger).Log("server.proxy", Cfg.Server.Proxy)
+	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
+	level.Info(logger).Log("server.auth-header", Cfg.Server.HeaderName)
 
 	// set inMem auth maps from config
 	authHeaderName = Cfg.Server.HeaderName
@@ -89,29 +122,29 @@ func main() {
 			// Header id set for Auth-enabled-cases
 			if c.Auth.Header {
 				authMemHeaderSet = append(authMemHeaderSet, c.ID)
+				level.Info(logger).Log("client.id", c.ID, "auth", "header")
 			}
 			// Basic base64-id map
 			if c.Auth.Basic.User != "" && c.Auth.Basic.Password != "" {
 				strb := []byte(c.Auth.Basic.User + ":" + c.Auth.Basic.Password)
 				str := base64.StdEncoding.EncodeToString(strb)
 				authMemBasicMap[str] = c.ID
+				level.Info(logger).Log("client.id", c.ID, "auth", "basic")
 			}
 			// Bearer token-id map
 			if c.Auth.Bearer.Token != "" {
 				authMemBearerMap[c.Auth.Bearer.Token] = c.ID
+				level.Info(logger).Log("client.id", c.ID, "auth", "bearer")
 			}
 		}
 	}
-	// log.Printf("DEBUG: Auth Basic : %v\n\n", authMemBasicMap)
-	// log.Printf("DEBUG: Auth Bearer : %v\n\n", authMemBearerMap)
-	// log.Printf("DEBUG: Auth headers : %v\n\n", authMemHeaderSet)
 
 	// set inMem matcher sets from config
 	idHeaderName = Cfg.Server.HeaderName
 	matchMemSet = make(map[string]MatcherSet)
 	for _, c := range Cfg.Clients {
 		AddMemMatcherSets(c.ID, c.Match)
-		log.Printf("DEBUG: Matcher Set ID: '%v' Set: %v\n", c.ID, matchMemSet[c.ID])
+		level.Info(logger).Log("client.id", c.ID, "matchset", strings.Join(c.Match, ", "))
 	}
 
 	if Cfg.Server.Authentication {
@@ -126,7 +159,8 @@ func main() {
 	}
 
 	if err := http.ListenAndServe(":"+Cfg.Server.Port, nil); err != nil {
-		panic(err)
+		level.Error(logger).Log("msg", "cannot start http listener", "err", err)
+		os.Exit(2)
 	}
 }
 
@@ -147,22 +181,27 @@ func serveReverseProxy(target string) http.Handler {
 		url, _ := url.Parse(target)
 		proxy := httputil.NewSingleHostReverseProxy(url)
 
+		// proxy.ErrorLog = logger
+
 		r.URL.Host = url.Host
 		r.URL.Scheme = url.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = url.Host
 
-		// requestDump(r, "outgoing request")
+		if Cfg.Loglevel == "debug" {
+			level.Debug(logger).Log("msg", "out request", "dump", requestDump(r))
+		}
 
 		proxy.ServeHTTP(w, r)
 	})
 }
 
 // for debug :)
-func requestDump(r *http.Request, comment string) {
+func requestDump(r *http.Request) []byte {
 	requestDump, err := httputil.DumpRequest(r, true)
+	logger.Log("sadasdasd")
 	if err != nil {
-		fmt.Println(err)
+		level.Debug(logger).Log("msg", "cannot make a request dump", "err", err)
 	}
-	log.Printf("DEBUG: "+comment+" : %s\n", requestDump)
+	return requestDump
 }

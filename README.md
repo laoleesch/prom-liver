@@ -1,7 +1,10 @@
 # prom-liver
+
 Auth filter for prometheus federate
 
 TODO:
+
+- logger
 - read bearer token from file
-- /health
 - /metrics
+- vault ?

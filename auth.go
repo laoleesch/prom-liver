@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// AuthSchema describe all available auth schemes
 type AuthSchema struct {
 	Header bool             `yaml:"header,omitempty"` //header 'X-Prom-Liver-Id' value
 	Basic  AuthSchemaBasic  `yaml:"basic,omitempty"`
