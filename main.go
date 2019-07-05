@@ -76,21 +76,7 @@ func main() {
 	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
 	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestamp)
 	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
-	switch strings.ToLower(Cfg.Loglevel) {
-	case "debug":
-		logger = kitlog.With(logger, "caller", kitlog.DefaultCaller)
-		logger = level.NewFilter(logger, level.AllowDebug())
-	case "info":
-		logger = level.NewFilter(logger, level.AllowInfo())
-	case "warning":
-		logger = level.NewFilter(logger, level.AllowWarn())
-	case "error":
-		logger = level.NewFilter(logger, level.AllowError())
-	default:
-		level.Error(logger).Log("msg", "wrong log level name", "value", Cfg.Loglevel)
-		Cfg.Loglevel = "info"
-		logger = level.NewFilter(logger, level.AllowInfo())
-	}
+	logger = setLoggerLevel(Cfg.Loglevel)
 	level.Info(logger).Log("loglevel", Cfg.Loglevel)
 
 	// read configfile
@@ -143,6 +129,7 @@ func main() {
 	// set inMem matcher sets from config
 	filter.SetMatchMemHeaderName(Cfg.Server.HeaderName)
 	for _, c := range Cfg.Clients {
+		//TODO!!! BUG
 		filter.AddMemMatcherSets(c.ID, c.Match)
 		level.Info(logger).Log("client.id", c.ID, "matchset", strings.Join(c.Match, ", "))
 	}
@@ -162,6 +149,25 @@ func main() {
 		level.Error(logger).Log("msg", "cannot start http listener", "err", err)
 		os.Exit(2)
 	}
+}
+
+func setLoggerLevel(s string) kitlog.Logger {
+	switch strings.ToLower(s) {
+	case "debug":
+		logger = kitlog.With(logger, "caller", kitlog.DefaultCaller)
+		logger = level.NewFilter(logger, level.AllowDebug())
+	case "info":
+		logger = level.NewFilter(logger, level.AllowInfo())
+	case "warning":
+		logger = level.NewFilter(logger, level.AllowWarn())
+	case "error":
+		logger = level.NewFilter(logger, level.AllowError())
+	default:
+		level.Error(logger).Log("msg", "wrong log level name", "value", Cfg.Loglevel)
+		Cfg.Loglevel = "info"
+		logger = level.NewFilter(logger, level.AllowInfo())
+	}
+	return logger
 }
 
 // filter non-GET requests
