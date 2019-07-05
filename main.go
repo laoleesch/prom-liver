@@ -17,14 +17,10 @@ import (
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 	yaml "gopkg.in/yaml.v2"
-)
 
-// AppConfig includes all config
-//type AppConfig struct {
-//	ConfigFile string
-//	Server     ServerConfig   `yaml:"server,omitempty"`
-//	Clients    []ClientConfig `yaml:"clients"`
-//}
+	auth "github.com/laoleesch/prom-liver/auth"
+	filter "github.com/laoleesch/prom-liver/filter"
+)
 
 // ServerConfig includes only "server:" three
 type ServerConfig struct {
@@ -36,9 +32,9 @@ type ServerConfig struct {
 
 //ClientConfig includes configuration for each client
 type ClientConfig struct {
-	ID    string     `yaml:"id"`
-	Auth  AuthSchema `yaml:"auth"`
-	Match []string   `yaml:"match"`
+	ID    string          `yaml:"id"`
+	Auth  auth.AuthSchema `yaml:"auth"`
+	Match []string        `yaml:"match"`
 }
 
 var (
@@ -93,6 +89,7 @@ func main() {
 	default:
 		level.Error(logger).Log("msg", "wrong log level name", "value", Cfg.Loglevel)
 		Cfg.Loglevel = "info"
+		logger = level.NewFilter(logger, level.AllowInfo())
 	}
 	level.Info(logger).Log("loglevel", Cfg.Loglevel)
 
@@ -114,10 +111,11 @@ func main() {
 	level.Info(logger).Log("server.auth-header", Cfg.Server.HeaderName)
 
 	// set inMem auth maps from config
-	authHeaderName = Cfg.Server.HeaderName
+	auth.SetAuthMemHeaderName(Cfg.Server.HeaderName)
 	if Cfg.Server.Authentication {
-		authMemBasicMap = make(map[string]string)
-		authMemBearerMap = make(map[string]string)
+		authMemBasicMap := make(map[string]string)
+		authMemBearerMap := make(map[string]string)
+		var authMemHeaderSet []string
 		for _, c := range Cfg.Clients {
 			// Header id set for Auth-enabled-cases
 			if c.Auth.Header {
@@ -137,24 +135,26 @@ func main() {
 				level.Info(logger).Log("client.id", c.ID, "auth", "bearer")
 			}
 		}
+		auth.SetAuthMemHeaderSet(authMemHeaderSet)
+		auth.SetAuthMemBasicMap(authMemBasicMap)
+		auth.SetAuthMemBearerMap(authMemBearerMap)
 	}
 
 	// set inMem matcher sets from config
-	idHeaderName = Cfg.Server.HeaderName
-	matchMemSet = make(map[string]MatcherSet)
+	filter.SetMatchMemHeaderName(Cfg.Server.HeaderName)
 	for _, c := range Cfg.Clients {
-		AddMemMatcherSets(c.ID, c.Match)
+		filter.AddMemMatcherSets(c.ID, c.Match)
 		level.Info(logger).Log("client.id", c.ID, "matchset", strings.Join(c.Match, ", "))
 	}
 
 	if Cfg.Server.Authentication {
 		http.Handle("/federate", handleGet(
-			CheckAuth(
-				FilterMatches(
+			auth.CheckAuth(
+				filter.FilterMatches(
 					serveReverseProxy(Cfg.Server.Proxy)))))
 	} else {
 		http.Handle("/federate", handleGet(
-			FilterMatches(
+			filter.FilterMatches(
 				serveReverseProxy(Cfg.Server.Proxy))))
 	}
 
