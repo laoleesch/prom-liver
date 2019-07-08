@@ -3,54 +3,57 @@ package auth
 import (
 	"net/http"
 	"strings"
+
+	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
-// AuthSchema describe all available auth schemes
-type AuthSchema struct {
-	Header bool             `yaml:"header,omitempty"` //header 'X-Prom-Liver-Id' value
-	Basic  AuthSchemaBasic  `yaml:"basic,omitempty"`
-	Bearer AuthSchemaBearer `yaml:"bearer,omitempty"`
+// Manager describe set of auth maps (auth: id)
+type Manager struct {
+	authHeaderName   string            //Header name
+	authMemHeaderSet []string          //client ids
+	authMemBasicMap  map[string]string //base64(user:password):id
+	authMemBearerMap map[string]string //token:id
+	logger           kitlog.Logger
 }
 
-type AuthSchemaBasic struct {
-	User     string `yaml:"user,omitempty"`
-	Password string `yaml:"password,omitempty"`
-	// TODO: Base64   string `yaml:"base64,omitempty"`
-	// TODO: File string `yaml:"file,omitempty"`
+// NewManager creates new instance
+func NewManager(l *kitlog.Logger) *Manager {
+	am := &Manager{
+		authHeaderName:   "",
+		authMemHeaderSet: make([]string, 0),
+		authMemBasicMap:  make(map[string]string),
+		authMemBearerMap: make(map[string]string),
+		logger:           *l,
+	}
+	return am
 }
 
-type AuthSchemaBearer struct {
-	Token string `yaml:"token,omitempty"`
-	// TODO: File  string `yaml:"file,omitempty"`
+// SetAuthMemHeaderName is like a setter
+func (am *Manager) SetAuthMemHeaderName(s string) {
+	am.authHeaderName = s
+	level.Debug(am.logger).Log("auth.header", am.authHeaderName)
 }
 
-var authMemHeaderSet []string          //client ids
-var authHeaderName string              //Header name
-var authMemBasicMap map[string]string  //base64(user:password):id
-var authMemBearerMap map[string]string //token:id
-
-func SetAuthMemHeaderName(s string) {
-	authHeaderName = s
+func (am *Manager) SetAuthMemHeaderSet(s []string) {
+	am.authMemHeaderSet = s
 }
 
-func SetAuthMemHeaderSet(s []string) {
-	authMemHeaderSet = s
+func (am *Manager) SetAuthMemBasicMap(m map[string]string) {
+	am.authMemBasicMap = m
 }
 
-func SetAuthMemBasicMap(m map[string]string) {
-	authMemBasicMap = m
+func (am *Manager) SetAuthMemBearerMap(m map[string]string) {
+	am.authMemBearerMap = m
 }
 
-func SetAuthMemBearerMap(m map[string]string) {
-	authMemBearerMap = m
-}
-
-func CheckAuth(h http.Handler) http.Handler {
+func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// check header
-		if header := r.Header.Get(authHeaderName); header != "" {
-			for i := range authMemHeaderSet {
-				if authMemHeaderSet[i] == header {
+		if header := r.Header.Get(am.authHeaderName); header != "" {
+			for i := range am.authMemHeaderSet {
+				if am.authMemHeaderSet[i] == header {
+					level.Debug(am.logger).Log("msg", "found header", "id", header)
 					h.ServeHTTP(w, r)
 					return
 				}
@@ -59,32 +62,39 @@ func CheckAuth(h http.Handler) http.Handler {
 		auth := r.Header.Get("Authorization")
 		if len(auth) < 8 {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			level.Debug(am.logger).Log("msg", "Incorrect Authorization header", "value", auth)
 			return
 		} else if strings.EqualFold(auth[:6], "Basic ") {
-			basicAuthInMem(h).ServeHTTP(w, r)
+			level.Debug(am.logger).Log("msg", "found Basic Authorizatoin header")
+			am.basicAuthInMem(h).ServeHTTP(w, r)
 			return
 		} else if strings.EqualFold(auth[:7], "Bearer ") {
-			bearerAuthInMem(h).ServeHTTP(w, r)
+			level.Debug(am.logger).Log("msg", "found Bearer Authorizatoin header")
+			am.bearerAuthInMem(h).ServeHTTP(w, r)
 			return
 		} else {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			level.Debug(am.logger).Log("msg", "Incorrect Authorization header value", "value", auth)
 			return
 		}
 	})
 }
 
-func basicAuthInMem(h http.Handler) http.Handler {
+func (am *Manager) basicAuthInMem(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		const prefix = "Basic "
 		if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			level.Debug(am.logger).Log("msg", "Incorrect Authorization header Basic value")
 			return
 		}
-		if v, ok := authMemBasicMap[auth[6:]]; ok {
-			r.Header.Set(authHeaderName, v)
+		if v, ok := am.authMemBasicMap[auth[6:]]; ok {
+			r.Header.Set(am.authHeaderName, v)
+			level.Debug(am.logger).Log("msg", "correct Basic auth", "id", v)
 		} else {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			level.Warn(am.logger).Log("msg", "unauthorized Basic")
 			return
 		}
 
@@ -92,18 +102,21 @@ func basicAuthInMem(h http.Handler) http.Handler {
 	})
 }
 
-func bearerAuthInMem(h http.Handler) http.Handler {
+func (am *Manager) bearerAuthInMem(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		const prefix = "Bearer "
 		if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			level.Debug(am.logger).Log("msg", "Incorrect Authorization header Bearer token value")
 			return
 		}
-		if v, ok := authMemBearerMap[auth[7:]]; ok {
-			r.Header.Set(authHeaderName, v)
+		if v, ok := am.authMemBearerMap[auth[7:]]; ok {
+			r.Header.Set(am.authHeaderName, v)
+			level.Debug(am.logger).Log("msg", "correct Bearer auth", "id", v)
 		} else {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			level.Warn(am.logger).Log("msg", "unauthorized Bearer")
 			return
 		}
 		h.ServeHTTP(w, r)

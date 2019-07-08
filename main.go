@@ -94,10 +94,11 @@ func main() {
 	level.Info(logger).Log("server.port", Cfg.Server.Port)
 	level.Info(logger).Log("server.proxy", Cfg.Server.Proxy)
 	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
-	level.Info(logger).Log("server.auth-header", Cfg.Server.HeaderName)
+	level.Info(logger).Log("server.id-header", Cfg.Server.HeaderName)
 
 	// set inMem auth maps from config
-	auth.SetAuthMemHeaderName(Cfg.Server.HeaderName)
+	am := auth.NewManager(&logger)
+	am.SetAuthMemHeaderName(Cfg.Server.HeaderName)
 	if Cfg.Server.Authentication {
 		authMemBasicMap := make(map[string]string)
 		authMemBearerMap := make(map[string]string)
@@ -121,9 +122,9 @@ func main() {
 				level.Info(logger).Log("client.id", c.ID, "auth", "bearer")
 			}
 		}
-		auth.SetAuthMemHeaderSet(authMemHeaderSet)
-		auth.SetAuthMemBasicMap(authMemBasicMap)
-		auth.SetAuthMemBearerMap(authMemBearerMap)
+		am.SetAuthMemHeaderSet(authMemHeaderSet)
+		am.SetAuthMemBasicMap(authMemBasicMap)
+		am.SetAuthMemBearerMap(authMemBearerMap)
 	}
 
 	// set inMem matcher sets from config
@@ -135,7 +136,7 @@ func main() {
 
 	if Cfg.Server.Authentication {
 		http.Handle("/federate", handleGet(
-			auth.CheckAuth(
+			am.CheckAuth(
 				fm.FilterMatches(
 					serveReverseProxy(Cfg.Server.Proxy)))))
 	} else {
@@ -204,7 +205,6 @@ func serveReverseProxy(target string) http.Handler {
 // for debug :)
 func requestDump(r *http.Request) []byte {
 	requestDump, err := httputil.DumpRequest(r, true)
-	logger.Log("sadasdasd")
 	if err != nil {
 		level.Debug(logger).Log("msg", "cannot make a request dump", "err", err)
 	}
