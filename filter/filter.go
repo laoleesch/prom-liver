@@ -4,23 +4,44 @@ import (
 	"fmt"
 	"net/http"
 
+	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
 
 // MatcherSet is a union of match[]
-type MatcherSet [][]*labels.Matcher
+type matcherSet [][]*labels.Matcher
 
-var matchMemSet map[string]MatcherSet
-var idHeaderName string //Header name
-
-// SetMatchMemHeaderName is like a setter
-func SetMatchMemHeaderName(s string) {
-	idHeaderName = s
+func (ms *matcherSet) toString() string {
+	return fmt.Sprintf("%v", ms)
 }
 
-// AddMemMatcherSets setter
-func AddMemMatcherSets(id string, stringset []string) error {
+// Manager describe one filter map (client id: filters)
+type Manager struct {
+	idHeaderName string
+	matchMemSet  map[string]matcherSet
+	logger       kitlog.Logger
+}
+
+// NewManager creates new instance
+func NewManager(l *kitlog.Logger) *Manager {
+	fm := &Manager{
+		idHeaderName: "",
+		matchMemSet:  make(map[string]matcherSet),
+		logger:       *l,
+	}
+	return fm
+}
+
+// SetMatchMemHeaderName is like a setter
+func (fm *Manager) SetMatchMemHeaderName(s string) {
+	fm.idHeaderName = s
+	level.Debug(fm.logger).Log("match.header", fm.idHeaderName)
+}
+
+// AddMatchMemSet adds a new id:matchset
+func (fm *Manager) AddMatchMemSet(id string, stringset []string) error {
 	var matcherSets [][]*labels.Matcher
 	for _, s := range stringset {
 		matchers, err := promql.ParseMetricSelector(s)
@@ -29,31 +50,36 @@ func AddMemMatcherSets(id string, stringset []string) error {
 		}
 		matcherSets = append(matcherSets, matchers)
 	}
-	matchMemSet[id] = matcherSets
+	fm.matchMemSet[id] = matcherSets
+	level.Info(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", fm.matchMemSet[id]))
 	return nil
 }
 
 // FilterMatches main function
-func FilterMatches(h http.Handler) http.Handler {
+func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// prometheus/web/federate.go part :)
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, fmt.Sprintf("ERROR: error parsing form values: %v", err), http.StatusBadRequest)
+			level.Warn(fm.logger).Log("msg", "cannot parse form values", "err", err)
 			return
 		}
 
-		rID := r.Header.Get(idHeaderName)
+		rID := r.Header.Get(fm.idHeaderName)
 		if rID == "" {
-			http.Error(w, fmt.Sprintf("ERROR: Empty header %v", idHeaderName), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("ERROR: Empty header %v", fm.idHeaderName), http.StatusBadRequest)
+			level.Warn(fm.logger).Log("msg", "empty header in filter request", "value", fm.idHeaderName)
 			return
 		}
 
 		var rMatcherSets [][]*labels.Matcher
+		level.Debug(fm.logger).Log("msg", "request match[] sets", "value", r.Form["match[]"])
 		for _, s := range r.Form["match[]"] {
 			matchers, err := promql.ParseMetricSelector(s)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
+				level.Warn(fm.logger).Log("msg", "cannot parse match[] sets", "value", s, "err", err)
 				return
 			}
 			rMatcherSets = append(rMatcherSets, matchers)
@@ -65,8 +91,8 @@ func FilterMatches(h http.Handler) http.Handler {
 		// compare matcherSets with white list
 
 		for _, mr := range rMatcherSets {
-			for _, mm := range matchMemSet[rID] {
-				if containAll(mr, mm) {
+			for _, mm := range fm.matchMemSet[rID] {
+				if matchIntersection(mr, mm) {
 					r.Form.Add("match[]", toParam(mr))
 					break
 				}
@@ -74,7 +100,7 @@ func FilterMatches(h http.Handler) http.Handler {
 		}
 
 		if len(r.Form["match[]"]) == 0 {
-			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", matchMemSet[rID]), http.StatusForbidden)
+			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", fm.matchMemSet[rID]), http.StatusForbidden)
 			return
 		}
 
@@ -82,7 +108,7 @@ func FilterMatches(h http.Handler) http.Handler {
 	})
 }
 
-func containAll(mr, mm []*labels.Matcher) bool {
+func matchIntersection(mr, mm []*labels.Matcher) bool {
 	count := 0
 
 	for _, mri := range mr {
@@ -99,10 +125,10 @@ func containAll(mr, mm []*labels.Matcher) bool {
 }
 
 func suitMatchers(mri, mmi *labels.Matcher) bool {
-	switch mri.Type.String() + " " + mmi.Type.String() {
-	case "= =~":
+	switch mri.Type.String() + mmi.Type.String() {
+	case "==~":
 		return mmi.Matches(mri.Value)
-	case "= !~":
+	case "=!~":
 		return mmi.Matches(mri.Value)
 	default:
 		return mri.Name == mmi.Name &&

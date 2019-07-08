@@ -27,7 +27,7 @@ type ServerConfig struct {
 	Port           string `yaml:"port,omitempty"`
 	Proxy          string `yaml:"proxy,omitempty"`
 	Authentication bool   `yaml:"authentication,omitempty"`
-	HeaderName     string `yaml:"auth-header,omitempty"`
+	HeaderName     string `yaml:"id-header,omitempty"`
 }
 
 //ClientConfig includes configuration for each client
@@ -76,7 +76,7 @@ func main() {
 	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
 	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestamp)
 	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
-	logger = setLoggerLevel(Cfg.Loglevel)
+	logger = setLoggerLevel(Cfg.Loglevel, &logger)
 	level.Info(logger).Log("loglevel", Cfg.Loglevel)
 
 	// read configfile
@@ -127,21 +127,20 @@ func main() {
 	}
 
 	// set inMem matcher sets from config
-	filter.SetMatchMemHeaderName(Cfg.Server.HeaderName)
+	fm := filter.NewManager(&logger)
+	fm.SetMatchMemHeaderName(Cfg.Server.HeaderName)
 	for _, c := range Cfg.Clients {
-		//TODO!!! BUG
-		filter.AddMemMatcherSets(c.ID, c.Match)
-		level.Info(logger).Log("client.id", c.ID, "matchset", strings.Join(c.Match, ", "))
+		fm.AddMatchMemSet(c.ID, c.Match)
 	}
 
 	if Cfg.Server.Authentication {
 		http.Handle("/federate", handleGet(
 			auth.CheckAuth(
-				filter.FilterMatches(
+				fm.FilterMatches(
 					serveReverseProxy(Cfg.Server.Proxy)))))
 	} else {
 		http.Handle("/federate", handleGet(
-			filter.FilterMatches(
+			fm.FilterMatches(
 				serveReverseProxy(Cfg.Server.Proxy))))
 	}
 
@@ -151,21 +150,21 @@ func main() {
 	}
 }
 
-func setLoggerLevel(s string) kitlog.Logger {
+func setLoggerLevel(s string, l *kitlog.Logger) kitlog.Logger {
 	switch strings.ToLower(s) {
 	case "debug":
+		logger = level.NewFilter(*l, level.AllowDebug())
 		logger = kitlog.With(logger, "caller", kitlog.DefaultCaller)
-		logger = level.NewFilter(logger, level.AllowDebug())
 	case "info":
-		logger = level.NewFilter(logger, level.AllowInfo())
+		logger = level.NewFilter(*l, level.AllowInfo())
 	case "warning":
-		logger = level.NewFilter(logger, level.AllowWarn())
+		logger = level.NewFilter(*l, level.AllowWarn())
 	case "error":
-		logger = level.NewFilter(logger, level.AllowError())
+		logger = level.NewFilter(*l, level.AllowError())
 	default:
-		level.Error(logger).Log("msg", "wrong log level name", "value", Cfg.Loglevel)
+		level.Error(*l).Log("msg", "wrong log level name", "value", Cfg.Loglevel)
 		Cfg.Loglevel = "info"
-		logger = level.NewFilter(logger, level.AllowInfo())
+		logger = level.NewFilter(*l, level.AllowInfo())
 	}
 	return logger
 }
