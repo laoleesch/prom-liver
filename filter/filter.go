@@ -20,7 +20,7 @@ func (ms *matcherSet) toString() string {
 // Manager describe one filter map (client id: filters)
 type Manager struct {
 	idHeaderName string
-	matchMemSet  map[string]matcherSet
+	matchMemMap  map[string]matcherSet
 	logger       kitlog.Logger
 }
 
@@ -28,7 +28,7 @@ type Manager struct {
 func NewManager(l *kitlog.Logger) *Manager {
 	fm := &Manager{
 		idHeaderName: "",
-		matchMemSet:  make(map[string]matcherSet),
+		matchMemMap:  make(map[string]matcherSet),
 		logger:       *l,
 	}
 	return fm
@@ -40,8 +40,8 @@ func (fm *Manager) SetMatchMemHeaderName(s string) {
 	level.Debug(fm.logger).Log("match.header", fm.idHeaderName)
 }
 
-// AddMatchMemSet adds a new id:matchset
-func (fm *Manager) AddMatchMemSet(id string, stringset []string) error {
+// AddMatchMemMapRecord adds a new id:matchset
+func (fm *Manager) AddMatchMemMapRecord(id string, stringset []string) error {
 	var matcherSets [][]*labels.Matcher
 	for _, s := range stringset {
 		matchers, err := promql.ParseMetricSelector(s)
@@ -50,8 +50,8 @@ func (fm *Manager) AddMatchMemSet(id string, stringset []string) error {
 		}
 		matcherSets = append(matcherSets, matchers)
 	}
-	fm.matchMemSet[id] = matcherSets
-	level.Info(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", fm.matchMemSet[id]))
+	fm.matchMemMap[id] = matcherSets
+	level.Info(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", fm.matchMemMap[id]))
 	return nil
 }
 
@@ -74,7 +74,7 @@ func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
 		}
 
 		var rMatcherSets [][]*labels.Matcher
-		level.Debug(fm.logger).Log("msg", "request match[] sets", "value", r.Form["match[]"])
+		level.Debug(fm.logger).Log("msg", "request match[] sets", "value", fmt.Sprintf("%v", r.Form["match[]"]))
 		for _, s := range r.Form["match[]"] {
 			matchers, err := promql.ParseMetricSelector(s)
 			if err != nil {
@@ -91,7 +91,7 @@ func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
 		// compare matcherSets with white list
 
 		for _, mr := range rMatcherSets {
-			for _, mm := range fm.matchMemSet[rID] {
+			for _, mm := range fm.matchMemMap[rID] {
 				if matchIntersection(mr, mm) {
 					r.Form.Add("match[]", toParam(mr))
 					break
@@ -100,7 +100,8 @@ func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
 		}
 
 		if len(r.Form["match[]"]) == 0 {
-			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", fm.matchMemSet[rID]), http.StatusForbidden)
+			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
+			level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", rMatcherSets))
 			return
 		}
 

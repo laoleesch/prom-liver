@@ -130,7 +130,7 @@ func main() {
 	fm := filter.NewManager(&logger)
 	fm.SetMatchMemHeaderName(Cfg.Server.HeaderName)
 	for _, c := range Cfg.Clients {
-		fm.AddMatchMemSet(c.ID, c.Match)
+		fm.AddMatchMemMapRecord(c.ID, c.Match)
 	}
 
 	if Cfg.Server.Authentication {
