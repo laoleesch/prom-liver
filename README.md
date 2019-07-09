@@ -4,7 +4,8 @@ Auth filter for prometheus federate
 
 TODO:
 
-- logger
-- read bearer token from file
-- /metrics
-- vault ?
+- [x] go-kit logger
+- [] read bearer token from file
+- [] /metrics
+- [] vault ?
+- [] read basic from htpasswd
