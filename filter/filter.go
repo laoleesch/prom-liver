@@ -13,8 +13,9 @@ import (
 // MatcherSet is a union of match[]
 type matcherSet [][]*labels.Matcher
 
-func (ms *matcherSet) toString() string {
-	return fmt.Sprintf("%v", ms)
+// didn't work. I'm stupid :(
+func (ms *matcherSet) String() string {
+	return fmt.Sprintf("%v", [][]*labels.Matcher(*ms))
 }
 
 // Manager describe one filter map (client id: filters)
