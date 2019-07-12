@@ -127,11 +127,20 @@ func matchIntersection(mr, mm []*labels.Matcher) bool {
 }
 
 func suitMatchers(mri, mmi *labels.Matcher) bool {
-	switch mri.Type.String() + mmi.Type.String() {
-	case "==~":
+	switch mmi.Type.String() + mri.Type.String() {
+	case "!==":
 		return mmi.Matches(mri.Value)
-	case "=!~":
+	case "=~=":
 		return mmi.Matches(mri.Value)
+	case "=~=~":
+		return mmi.Matches(mri.Value)
+	case "!~=":
+		return mmi.Matches(mri.Value)
+	// case "!~=~":
+	// return mmi.Matches(mri.Value)
+	// case "!~!=":
+	// match, _ := regexp.MatchString(mmi.Value, mri.Value)
+	// return match
 	default:
 		return mri.Name == mmi.Name &&
 			mri.Type == mmi.Type &&

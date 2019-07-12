@@ -17,6 +17,7 @@ clients:
     match:
       - '{project=~"go-.*"}'
       - '{env="test"}'
+      - '{some!~".*oops.*"}'
   - id: 'cadvisor'
     auth:
       basic:
