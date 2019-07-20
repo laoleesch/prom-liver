@@ -9,4 +9,4 @@ TODO:
 - [ ] /metrics
 - [ ] vault ?
 - [ ] read basic from htpasswd
-- [ ] several bearer tokens for one client
+- [x] several bearer tokens for one client (token-client like many-one)

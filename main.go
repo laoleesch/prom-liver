@@ -1,6 +1,8 @@
 package main
 
 import (
+	// _ "net/http/pprof"
+
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -32,9 +34,9 @@ type ServerConfig struct {
 
 //ClientConfig includes configuration for each client
 type ClientConfig struct {
-	ID    string          `yaml:"id"`
-	Auth  auth.AuthSchema `yaml:"auth"`
-	Match []string        `yaml:"match"`
+	ID    string      `yaml:"id"`
+	Auth  auth.Schema `yaml:"auth"`
+	Match []string    `yaml:"match"`
 }
 
 var (
@@ -117,9 +119,13 @@ func main() {
 				level.Info(logger).Log("client.id", c.ID, "auth", "basic")
 			}
 			// Bearer token-id map
-			if c.Auth.Bearer.Token != "" {
-				authMemBearerMap[c.Auth.Bearer.Token] = c.ID
-				level.Info(logger).Log("client.id", c.ID, "auth", "bearer")
+			if len(c.Auth.Bearer.Tokens) > 0 {
+				numTokens := 0
+				for _, t := range c.Auth.Bearer.Tokens {
+					authMemBearerMap[t] = c.ID
+					numTokens = numTokens + 1
+				}
+				level.Info(logger).Log("client.id", c.ID, "auth", "bearer", "tokens", numTokens)
 			}
 		}
 		am.SetAuthMemHeaderSet(authMemHeaderSet)

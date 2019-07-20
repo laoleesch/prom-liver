@@ -24,7 +24,9 @@ clients:
         user: 'cadvisor'
         password: 'cadvisor'
       bearer:
-        token: 'TESTTEST'
+        tokens: 
+          - 'TESTTEST'
+          - 'TESTTEST2'
     match:
       - 'up{project="cadvisor", env="test"}'
     
