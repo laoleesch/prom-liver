@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"strings"
+	"sync"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -15,6 +16,7 @@ type Manager struct {
 	authMemBasicMap  map[string]string //base64(user:password):id
 	authMemBearerMap map[string]string //token:id
 	logger           kitlog.Logger
+	mtx              sync.RWMutex
 }
 
 // NewManager creates new instance
@@ -29,24 +31,38 @@ func NewManager(l *kitlog.Logger) *Manager {
 	return am
 }
 
-// SetAuthMemHeaderName is like a setter
-func (am *Manager) SetAuthMemHeaderName(s string) {
-	am.authHeaderName = s
-	level.Debug(am.logger).Log("auth.header", am.authHeaderName)
+// ApplyConfig apply new config
+func (am *Manager) ApplyConfig(
+	authHeaderName string,
+	authMemHeaderSet []string,
+	authMemBasicMap map[string]string,
+	authMemBearerMap map[string]string) error {
+
+	am.mtx.Lock()
+	defer am.mtx.Unlock()
+
+	am.authHeaderName = authHeaderName
+	am.authMemHeaderSet = authMemHeaderSet
+	am.authMemBasicMap = authMemBasicMap
+	am.authMemBearerMap = authMemBearerMap
+
+	return nil
 }
 
-func (am *Manager) SetAuthMemHeaderSet(s []string) {
-	am.authMemHeaderSet = s
+// CopyConfig apply new config from another manager
+func (am *Manager) CopyConfig(manager *Manager) error {
+	am.mtx.Lock()
+	defer am.mtx.Unlock()
+
+	am.authHeaderName = manager.authHeaderName
+	am.authMemHeaderSet = manager.authMemHeaderSet
+	am.authMemBasicMap = manager.authMemBasicMap
+	am.authMemBearerMap = manager.authMemBearerMap
+
+	return nil
 }
 
-func (am *Manager) SetAuthMemBasicMap(m map[string]string) {
-	am.authMemBasicMap = m
-}
-
-func (am *Manager) SetAuthMemBearerMap(m map[string]string) {
-	am.authMemBearerMap = m
-}
-
+// CheckAuth try to check headers
 func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// check header

@@ -14,6 +14,9 @@ clients:
         user: user1
         password: password1
       header: true
+      bearer:
+        files:
+          - "examples/bearer_token.txt"
     match:
       - '{project=~"go-.*"}'
       - '{env="test"}'
@@ -21,8 +24,8 @@ clients:
   - id: 'cadvisor'
     auth:
       basic:
-        user: 'cadvisor'
-        password: 'cadvisor'
+        files:
+          - 'examples/bearer_token.txt'
       bearer:
         tokens: 
           - 'TESTTEST'

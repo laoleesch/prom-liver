@@ -3,6 +3,7 @@ package filter
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -23,6 +24,7 @@ type Manager struct {
 	idHeaderName string
 	matchMemMap  map[string]matcherSet
 	logger       kitlog.Logger
+	mtx          sync.RWMutex
 }
 
 // NewManager creates new instance
@@ -35,14 +37,13 @@ func NewManager(l *kitlog.Logger) *Manager {
 	return fm
 }
 
-// SetMatchMemHeaderName is like a setter
-func (fm *Manager) SetMatchMemHeaderName(s string) {
-	fm.idHeaderName = s
-	level.Debug(fm.logger).Log("match.header", fm.idHeaderName)
-}
+// // SetMatchMemHeaderName is like a setter
+// func (fm *Manager) SetMatchMemHeaderName(s string) {
+// 	fm.idHeaderName = s
+// 	level.Debug(fm.logger).Log("match.header", fm.idHeaderName)
+// }
 
-// AddMatchMemMapRecord adds a new id:matchset
-func (fm *Manager) AddMatchMemMapRecord(id string, stringset []string) error {
+func (fm *Manager) addMatchMemMapRecord(id string, stringset []string) error {
 	var matcherSets [][]*labels.Matcher
 	for _, s := range stringset {
 		matchers, err := promql.ParseMetricSelector(s)
@@ -53,6 +54,19 @@ func (fm *Manager) AddMatchMemMapRecord(id string, stringset []string) error {
 	}
 	fm.matchMemMap[id] = matcherSets
 	level.Info(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", fm.matchMemMap[id]))
+	return nil
+}
+
+// ApplyConfig apply new config
+func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string) error {
+	fm.mtx.Lock()
+	defer fm.mtx.Unlock()
+
+	fm.idHeaderName = idHeaderName
+	for id, sets := range matchMap {
+		fm.addMatchMemMapRecord(id, sets)
+	}
+
 	return nil
 }
 

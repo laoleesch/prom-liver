@@ -1,11 +1,10 @@
 package main
 
 import (
+
 	// _ "net/http/pprof"
 
-	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	stdlog "log"
 	"net/http"
 	"net/http/httputil"
@@ -18,26 +17,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
-	yaml "gopkg.in/yaml.v2"
 
 	auth "github.com/laoleesch/prom-liver/auth"
+	config "github.com/laoleesch/prom-liver/config"
 	filter "github.com/laoleesch/prom-liver/filter"
 )
-
-// ServerConfig includes only "server:" three
-type ServerConfig struct {
-	Port           string `yaml:"port,omitempty"`
-	Proxy          string `yaml:"proxy,omitempty"`
-	Authentication bool   `yaml:"authentication,omitempty"`
-	HeaderName     string `yaml:"id-header,omitempty"`
-}
-
-//ClientConfig includes configuration for each client
-type ClientConfig struct {
-	ID    string      `yaml:"id"`
-	Auth  auth.Schema `yaml:"auth"`
-	Match []string    `yaml:"match"`
-}
 
 var (
 	err    error
@@ -48,27 +32,19 @@ var (
 	cmdLogLevel   string
 
 	//Cfg default config
-	Cfg = struct {
-		Server  ServerConfig   `yaml:"server,omitempty"`
-		Clients []ClientConfig `yaml:"clients"`
-	}{
-		Server: ServerConfig{
-			Port:           "8080",
-			Proxy:          "http://localhost:9090/",
-			Authentication: true,
-			HeaderName:     "X-Prom-Liver-Id",
-		},
-	}
+	Cfg = config.DefaultConfig
+
+	// Auth & Match sets
+	am auth.Manager
+	fm filter.Manager
 )
 
 func main() {
 
 	c := kingpin.New(filepath.Base(os.Args[0]), "Auth-filter-reverse-proxy-server for Prometheus federate")
 	c.HelpFlag.Short('h')
-
-	// get configfile
-	c.Flag("config", "Configuration file").Short('c').Default("config.yaml").StringVar(&cmdConfigFile)
 	c.Flag("loglevel", "Log level: debug, info, warning, error").Default("info").Short('l').StringVar(&cmdLogLevel)
+	c.Flag("config", "Configuration file").Short('c').Default("config.yaml").StringVar(&cmdConfigFile)
 	_, err := c.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, errors.Wrapf(err, "Error parsing commandline arguments"))
@@ -82,27 +58,36 @@ func main() {
 	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
 	logger = setLoggerLevel(cmdLogLevel, &logger)
 	level.Info(logger).Log("loglevel", cmdLogLevel)
-
-	// read configfile
-	file, err := ioutil.ReadFile(cmdConfigFile)
-	if err != nil {
-		level.Error(logger).Log("msg", "cannot read config file", "err", err)
-		os.Exit(2)
-	}
-	err = yaml.UnmarshalStrict(file, &Cfg)
-	if err != nil {
-		level.Error(logger).Log("msg", "cannot parse config file", "err", err)
-		os.Exit(2)
-	}
 	level.Info(logger).Log("configfile", cmdConfigFile)
+
+	// check configfile
+	// f, err := os.Open(cmdConfigFile)
+	// if err != nil {
+	// 	level.Error(logger).Log("msg", "cannot open config file", "err", err)
+	// 	os.Exit(2)
+	// }
+	// f.Close()
+
+	// init auth and filter managers and load config
+	// if err = reloadConfig(cmdConfigFile, &logger, newCfg); err != nil {
+	// 	level.Error(logger).Log("msg", "Error loading config", "err", err)
+	// 	// os.Exit(2)
+	// }
+
+	Cfg, err = config.LoadConfig(cmdConfigFile, &logger)
+	if err != nil {
+		os.Exit(2)
+	}
+
 	level.Info(logger).Log("server.port", Cfg.Server.Port)
 	level.Info(logger).Log("server.proxy", Cfg.Server.Proxy)
 	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
 	level.Info(logger).Log("server.id-header", Cfg.Server.HeaderName)
 
-	// set inMem auth maps from config
 	am := auth.NewManager(&logger)
-	am.SetAuthMemHeaderName(Cfg.Server.HeaderName)
+	fm := filter.NewManager(&logger)
+
+	// set inMem auth maps from config
 	if Cfg.Server.Authentication {
 		authMemBasicMap := make(map[string]string)
 		authMemBearerMap := make(map[string]string)
@@ -114,34 +99,31 @@ func main() {
 				level.Info(logger).Log("client.id", c.ID, "auth", "header")
 			}
 			// Basic base64-id map
-			if c.Auth.Basic.User != "" && c.Auth.Basic.Password != "" {
-				strb := []byte(c.Auth.Basic.User + ":" + c.Auth.Basic.Password)
-				str := base64.StdEncoding.EncodeToString(strb)
-				authMemBasicMap[str] = c.ID
-				level.Info(logger).Log("client.id", c.ID, "auth", "basic")
+			if basicSet, cnt := c.Auth.Basic.GetSet(&logger); cnt > 0 {
+				for _, b := range basicSet {
+					authMemBasicMap[b] = c.ID
+				}
+				level.Info(logger).Log("client.id", c.ID, "auth", "basic", "credentials", cnt)
 			}
 			// Bearer token-id map
-			if len(c.Auth.Bearer.Tokens) > 0 {
-				numTokens := 0
-				for _, t := range c.Auth.Bearer.Tokens {
+			if bearerSet, cnt := c.Auth.Bearer.GetSet(&logger); cnt > 0 {
+				for _, t := range bearerSet {
 					authMemBearerMap[t] = c.ID
-					numTokens = numTokens + 1
 				}
-				level.Info(logger).Log("client.id", c.ID, "auth", "bearer", "tokens", numTokens)
+				level.Info(logger).Log("client.id", c.ID, "auth", "bearer", "tokens", cnt)
 			}
 		}
-		am.SetAuthMemHeaderSet(authMemHeaderSet)
-		am.SetAuthMemBasicMap(authMemBasicMap)
-		am.SetAuthMemBearerMap(authMemBearerMap)
+		am.ApplyConfig(Cfg.Server.HeaderName, authMemHeaderSet, authMemBasicMap, authMemBearerMap)
 	}
 
 	// set inMem matcher sets from config
-	fm := filter.NewManager(&logger)
-	fm.SetMatchMemHeaderName(Cfg.Server.HeaderName)
+	matchMap := make(map[string][]string)
 	for _, c := range Cfg.Clients {
-		fm.AddMatchMemMapRecord(c.ID, c.Match)
+		matchMap[c.ID] = c.Match
 	}
+	fm.ApplyConfig(Cfg.Server.HeaderName, matchMap)
 
+	// run handlers
 	if Cfg.Server.Authentication {
 		http.Handle("/federate", handleGet(
 			am.CheckAuth(
@@ -177,6 +159,11 @@ func setLoggerLevel(s string, l *kitlog.Logger) kitlog.Logger {
 	}
 	return logger
 }
+
+// func reloadConfig(filename string, l *kitlog.Logger, am *auth.Manager, fm *filter.Manager) error {
+
+// 	return nil
+// }
 
 // filter non-GET requests
 func handleGet(h http.Handler) http.Handler {
