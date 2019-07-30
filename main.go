@@ -43,12 +43,14 @@ var (
 	err    error
 	logger kitlog.Logger
 
+	// cmd args
+	cmdConfigFile string
+	cmdLogLevel   string
+
 	//Cfg default config
 	Cfg = struct {
-		ConfigFile string
-		Loglevel   string
-		Server     ServerConfig   `yaml:"server,omitempty"`
-		Clients    []ClientConfig `yaml:"clients"`
+		Server  ServerConfig   `yaml:"server,omitempty"`
+		Clients []ClientConfig `yaml:"clients"`
 	}{
 		Server: ServerConfig{
 			Port:           "8080",
@@ -65,8 +67,8 @@ func main() {
 	c.HelpFlag.Short('h')
 
 	// get configfile
-	c.Flag("config", "Configuration file").Short('c').Default("config.yaml").StringVar(&Cfg.ConfigFile)
-	c.Flag("loglevel", "Log level: debug, info, warning, error").Default("info").Short('l').StringVar(&Cfg.Loglevel)
+	c.Flag("config", "Configuration file").Short('c').Default("config.yaml").StringVar(&cmdConfigFile)
+	c.Flag("loglevel", "Log level: debug, info, warning, error").Default("info").Short('l').StringVar(&cmdLogLevel)
 	_, err := c.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, errors.Wrapf(err, "Error parsing commandline arguments"))
@@ -78,11 +80,11 @@ func main() {
 	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
 	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestamp)
 	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
-	logger = setLoggerLevel(Cfg.Loglevel, &logger)
-	level.Info(logger).Log("loglevel", Cfg.Loglevel)
+	logger = setLoggerLevel(cmdLogLevel, &logger)
+	level.Info(logger).Log("loglevel", cmdLogLevel)
 
 	// read configfile
-	file, err := ioutil.ReadFile(Cfg.ConfigFile)
+	file, err := ioutil.ReadFile(cmdConfigFile)
 	if err != nil {
 		level.Error(logger).Log("msg", "cannot read config file", "err", err)
 		os.Exit(2)
@@ -92,7 +94,7 @@ func main() {
 		level.Error(logger).Log("msg", "cannot parse config file", "err", err)
 		os.Exit(2)
 	}
-	level.Info(logger).Log("configfile", Cfg.ConfigFile)
+	level.Info(logger).Log("configfile", cmdConfigFile)
 	level.Info(logger).Log("server.port", Cfg.Server.Port)
 	level.Info(logger).Log("server.proxy", Cfg.Server.Proxy)
 	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
@@ -169,8 +171,8 @@ func setLoggerLevel(s string, l *kitlog.Logger) kitlog.Logger {
 	case "error":
 		logger = level.NewFilter(*l, level.AllowError())
 	default:
-		level.Error(*l).Log("msg", "wrong log level name", "value", Cfg.Loglevel)
-		Cfg.Loglevel = "info"
+		level.Error(*l).Log("msg", "wrong log level name", "value", cmdLogLevel)
+		cmdLogLevel = "info"
 		logger = level.NewFilter(*l, level.AllowInfo())
 	}
 	return logger
@@ -200,7 +202,7 @@ func serveReverseProxy(target string) http.Handler {
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = url.Host
 
-		if Cfg.Loglevel == "debug" {
+		if cmdLogLevel == "debug" {
 			level.Debug(logger).Log("msg", "out request", "dump", requestDump(r))
 		}
 

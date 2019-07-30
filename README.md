@@ -10,3 +10,4 @@ TODO:
 - [ ] vault ?
 - [ ] read basic from htpasswd
 - [x] several bearer tokens for one client (token-client like many-one)
+- [ ] SIGHUP/POST to reload config
