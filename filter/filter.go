@@ -14,7 +14,7 @@ import (
 // MatcherSet is a union of match[]
 type matcherSet [][]*labels.Matcher
 
-// didn't work. I'm stupid :(
+// doesn't work. I'm stupid :(
 func (ms *matcherSet) String() string {
 	return fmt.Sprintf("%v", [][]*labels.Matcher(*ms))
 }
@@ -37,36 +37,28 @@ func NewManager(l *kitlog.Logger) *Manager {
 	return fm
 }
 
-// // SetMatchMemHeaderName is like a setter
-// func (fm *Manager) SetMatchMemHeaderName(s string) {
-// 	fm.idHeaderName = s
-// 	level.Debug(fm.logger).Log("match.header", fm.idHeaderName)
-// }
-
-func (fm *Manager) addMatchMemMapRecord(id string, stringset []string) error {
-	var matcherSets [][]*labels.Matcher
-	for _, s := range stringset {
-		matchers, err := promql.ParseMetricSelector(s)
-		if err != nil {
-			return err
-		}
-		matcherSets = append(matcherSets, matchers)
-	}
-	fm.matchMemMap[id] = matcherSets
-	level.Info(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", fm.matchMemMap[id]))
-	return nil
-}
-
 // ApplyConfig apply new config
 func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string) error {
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
-	fm.idHeaderName = idHeaderName
-	for id, sets := range matchMap {
-		fm.addMatchMemMapRecord(id, sets)
+	matchMemMap := make(map[string]matcherSet)
+	var matcherSets [][]*labels.Matcher
+
+	for id, matches := range matchMap {
+		for _, s := range matches {
+			matchers, err := promql.ParseMetricSelector(s)
+			if err != nil {
+				return err
+			}
+			matcherSets = append(matcherSets, matchers)
+		}
+		matchMemMap[id] = matcherSets
+		level.Debug(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", matchMemMap[id]))
 	}
 
+	fm.matchMemMap = matchMemMap
+	fm.idHeaderName = idHeaderName
 	return nil
 }
 

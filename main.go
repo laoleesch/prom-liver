@@ -24,19 +24,11 @@ import (
 )
 
 var (
-	err    error
 	logger kitlog.Logger
 
 	// cmd args
 	cmdConfigFile string
 	cmdLogLevel   string
-
-	//Cfg default config
-	Cfg = config.DefaultConfig
-
-	// Auth & Match sets
-	am auth.Manager
-	fm filter.Manager
 )
 
 func main() {
@@ -53,27 +45,12 @@ func main() {
 	}
 
 	// init logger
-	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
-	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestamp)
-	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
-	logger = setLoggerLevel(cmdLogLevel, &logger)
+	logger = initLogger(cmdLogLevel)
 	level.Info(logger).Log("loglevel", cmdLogLevel)
 	level.Info(logger).Log("configfile", cmdConfigFile)
 
-	// check configfile
-	// f, err := os.Open(cmdConfigFile)
-	// if err != nil {
-	// 	level.Error(logger).Log("msg", "cannot open config file", "err", err)
-	// 	os.Exit(2)
-	// }
-	// f.Close()
-
-	// init auth and filter managers and load config
-	// if err = reloadConfig(cmdConfigFile, &logger, newCfg); err != nil {
-	// 	level.Error(logger).Log("msg", "Error loading config", "err", err)
-	// 	// os.Exit(2)
-	// }
-
+	// Load config file
+	Cfg := config.DefaultConfig
 	Cfg, err = config.LoadConfig(cmdConfigFile, &logger)
 	if err != nil {
 		os.Exit(2)
@@ -84,55 +61,35 @@ func main() {
 	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
 	level.Info(logger).Log("server.id-header", Cfg.Server.HeaderName)
 
-	am := auth.NewManager(&logger)
-	fm := filter.NewManager(&logger)
-
-	// set inMem auth maps from config
+	// apply config to managers
+	amp := auth.NewManager(&logger)
 	if Cfg.Server.Authentication {
-		authMemBasicMap := make(map[string]string)
-		authMemBearerMap := make(map[string]string)
-		var authMemHeaderSet []string
-		for _, c := range Cfg.Clients {
-			// Header id set for Auth-enabled-cases
-			if c.Auth.Header {
-				authMemHeaderSet = append(authMemHeaderSet, c.ID)
-				level.Info(logger).Log("client.id", c.ID, "auth", "header")
-			}
-			// Basic base64-id map
-			if basicSet, cnt := c.Auth.Basic.GetSet(&logger); cnt > 0 {
-				for _, b := range basicSet {
-					authMemBasicMap[b] = c.ID
-				}
-				level.Info(logger).Log("client.id", c.ID, "auth", "basic", "credentials", cnt)
-			}
-			// Bearer token-id map
-			if bearerSet, cnt := c.Auth.Bearer.GetSet(&logger); cnt > 0 {
-				for _, t := range bearerSet {
-					authMemBearerMap[t] = c.ID
-				}
-				level.Info(logger).Log("client.id", c.ID, "auth", "bearer", "tokens", cnt)
-			}
+		amp, err = configureAuth(&Cfg)
+		if err != nil {
+			level.Error(logger).Log("msg", "cannot init auth config", "err", err)
+			os.Exit(2)
 		}
-		am.ApplyConfig(Cfg.Server.HeaderName, authMemHeaderSet, authMemBasicMap, authMemBearerMap)
 	}
 
-	// set inMem matcher sets from config
-	matchMap := make(map[string][]string)
-	for _, c := range Cfg.Clients {
-		matchMap[c.ID] = c.Match
+	fmp := filter.NewManager(&logger)
+	fmp, err = configureFilter(&Cfg)
+	if err != nil {
+		level.Error(logger).Log("msg", "cannot init filter config", "err", err)
+		os.Exit(2)
 	}
-	fm.ApplyConfig(Cfg.Server.HeaderName, matchMap)
 
 	// run handlers
 	if Cfg.Server.Authentication {
-		http.Handle("/federate", handleGet(
-			am.CheckAuth(
-				fm.FilterMatches(
-					serveReverseProxy(Cfg.Server.Proxy)))))
+		http.Handle("/federate",
+			handleGet(
+				amp.CheckAuth(
+					fmp.FilterMatches(
+						serveReverseProxy(Cfg.Server.Proxy)))))
 	} else {
-		http.Handle("/federate", handleGet(
-			fm.FilterMatches(
-				serveReverseProxy(Cfg.Server.Proxy))))
+		http.Handle("/federate",
+			handleGet(
+				fmp.FilterMatches(
+					serveReverseProxy(Cfg.Server.Proxy))))
 	}
 
 	if err := http.ListenAndServe(":"+Cfg.Server.Port, nil); err != nil {
@@ -141,23 +98,100 @@ func main() {
 	}
 }
 
-func setLoggerLevel(s string, l *kitlog.Logger) kitlog.Logger {
+func initLogger(s string) kitlog.Logger {
+	logger = kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stderr))
+	logger = kitlog.With(logger, "ts", kitlog.DefaultTimestamp)
+	stdlog.SetOutput(kitlog.NewStdlibAdapter(logger))
 	switch strings.ToLower(s) {
 	case "debug":
-		logger = level.NewFilter(*l, level.AllowDebug())
+		logger = level.NewFilter(logger, level.AllowDebug())
 		logger = kitlog.With(logger, "caller", kitlog.DefaultCaller)
 	case "info":
-		logger = level.NewFilter(*l, level.AllowInfo())
+		logger = level.NewFilter(logger, level.AllowInfo())
 	case "warning":
-		logger = level.NewFilter(*l, level.AllowWarn())
+		logger = level.NewFilter(logger, level.AllowWarn())
 	case "error":
-		logger = level.NewFilter(*l, level.AllowError())
+		logger = level.NewFilter(logger, level.AllowError())
 	default:
-		level.Error(*l).Log("msg", "wrong log level name", "value", cmdLogLevel)
+		level.Error(logger).Log("msg", "wrong log level name", "value", cmdLogLevel)
 		cmdLogLevel = "info"
-		logger = level.NewFilter(*l, level.AllowInfo())
+		logger = level.NewFilter(logger, level.AllowInfo())
 	}
 	return logger
+}
+
+func configureAuth(cfg *config.Config) (*auth.Manager, error) {
+	newAuth := auth.NewManager(&logger)
+	authMemBasicMap := make(map[string]string)
+	authMemBearerMap := make(map[string]string)
+	var authMemHeaderSet []string
+
+	var authMemBasicMapClient map[string]string
+	var authMemBearerMapClient map[string]string
+	var err error
+
+	level.Debug(logger).Log("msg", "prepearing auth config")
+
+	for _, c := range cfg.Clients {
+		// Header id set for Auth-enabled-cases
+		if c.Auth.Header {
+			authMemHeaderSet = append(authMemHeaderSet, c.ID)
+			level.Debug(logger).Log("client.id", c.ID, "auth", "header")
+		}
+		// Basic base64-id map
+		authMemBasicMapClient = make(map[string]string)
+		if basicList, cnt := c.Auth.Basic.GetAll(&logger); cnt > 0 {
+			for _, b := range basicList {
+				//maybe there needs to decode base64 and check login, not whole encoded login-pass
+				if id, ok := authMemBasicMap[b]; ok {
+					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, c.ID)
+					return nil, err
+				}
+				authMemBasicMapClient[b] = c.ID
+			}
+			for _, b := range basicList {
+				authMemBasicMap[b] = authMemBasicMapClient[b]
+			}
+			level.Debug(logger).Log("client.id", c.ID, "auth", "basic", "credentials", len(authMemBasicMapClient))
+		}
+
+		// Bearer token-id map
+		authMemBearerMapClient = make(map[string]string)
+		if bearerList, cnt := c.Auth.Bearer.GetAll(&logger); cnt > 0 {
+			for _, t := range bearerList {
+				if id, ok := authMemBearerMap[t]; ok {
+					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, c.ID)
+					return nil, err
+				}
+				authMemBearerMapClient[t] = c.ID
+			}
+			for _, b := range bearerList {
+				authMemBearerMap[b] = authMemBearerMapClient[b]
+			}
+			level.Debug(logger).Log("client.id", c.ID, "auth", "bearer", "tokens", len(authMemBearerMapClient))
+		}
+	}
+	err = newAuth.ApplyConfig(cfg.Server.HeaderName, authMemHeaderSet, authMemBasicMap, authMemBearerMap)
+	if err != nil {
+		return nil, err
+	}
+
+	return newAuth, nil
+}
+
+func configureFilter(cfg *config.Config) (*filter.Manager, error) {
+	newFilter := filter.NewManager(&logger)
+
+	matchMap := make(map[string][]string)
+	for _, c := range cfg.Clients {
+		matchMap[c.ID] = c.Match
+	}
+	err := newFilter.ApplyConfig(cfg.Server.HeaderName, matchMap)
+	if err != nil {
+		return nil, err
+	}
+
+	return newFilter, nil
 }
 
 // func reloadConfig(filename string, l *kitlog.Logger, am *auth.Manager, fm *filter.Manager) error {

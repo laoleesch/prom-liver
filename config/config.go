@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/base64"
-	"errors"
 	"io/ioutil"
 
 	kitlog "github.com/go-kit/kit/log"
@@ -89,17 +88,13 @@ func readConfigFile(configFile string, l *kitlog.Logger) (Config, error) {
 func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 	newCfg, err := readConfigFile(configFile, l)
 
-	//checks
-	if newCfg.Server.HeaderName == "" {
-		err = errors.New("empty Header name")
-	}
 	//TODO: check unique usernames and other auth credentials...
 
 	return newCfg, err
 }
 
-// GetSet return slice of base64 credentials and len of this slice
-func (s *AuthSchemaBasic) GetSet(l *kitlog.Logger) ([]string, int) {
+// GetAll return slice of base64 credentials and len of this slice
+func (s *AuthSchemaBasic) GetAll(l *kitlog.Logger) ([]string, int) {
 	base64tokens := make([]string, 0)
 
 	if len(s.Base64) > 0 {
@@ -129,8 +124,8 @@ func (s *AuthSchemaBasic) GetSet(l *kitlog.Logger) ([]string, int) {
 	return base64tokens, len(base64tokens)
 }
 
-// GetSet return slice of bearer tokens and len of this slice
-func (s *AuthSchemaBearer) GetSet(l *kitlog.Logger) ([]string, int) {
+// GetAll return slice of bearer tokens and len of this slice
+func (s *AuthSchemaBearer) GetAll(l *kitlog.Logger) ([]string, int) {
 	bearerTokens := make([]string, 0)
 
 	if len(s.Tokens) > 0 {
