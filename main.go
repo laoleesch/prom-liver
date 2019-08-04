@@ -10,8 +10,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -78,6 +80,23 @@ func main() {
 		level.Error(logger).Log("msg", "cannot init filter config", "err", err)
 		os.Exit(2)
 	}
+
+	// config reload handler
+	go func() {
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+
+		for {
+			select {
+			case <-hup:
+				if err := reloadConfig(cmdConfigFile, &logger, amp, fmp); err != nil {
+					level.Error(logger).Log("msg", "Error reloading config", "err", err)
+				} else {
+					level.Info(logger).Log("msg", "Config has been successfuly reloaded", "file", cmdConfigFile)
+				}
+			}
+		}
+	}()
 
 	// run handlers
 	if Cfg.Server.Authentication {
@@ -196,10 +215,33 @@ func configureFilter(cfg *config.Config) (*filter.Manager, error) {
 	return newFilter, nil
 }
 
-// func reloadConfig(filename string, l *kitlog.Logger, am *auth.Manager, fm *filter.Manager) error {
+func reloadConfig(filename string, l *kitlog.Logger, am *auth.Manager, fm *filter.Manager) error {
+	cfg, err := config.LoadConfig(filename, &logger)
+	if err != nil {
+		return err
+	}
 
-// 	return nil
-// }
+	newAmp := auth.NewManager(&logger)
+	if cfg.Server.Authentication {
+		newAmp, err = configureAuth(&cfg)
+		if err != nil {
+			level.Error(logger).Log("msg", "cannot init new auth config", "err", err)
+			return err
+		}
+	}
+
+	newFmp := filter.NewManager(&logger)
+	newFmp, err = configureFilter(&cfg)
+	if err != nil {
+		level.Error(logger).Log("msg", "cannot init new filter config", "err", err)
+		return err
+	}
+
+	am.CopyConfig(newAmp)
+	fm.CopyConfig(newFmp)
+
+	return nil
+}
 
 // filter non-GET requests
 func handleGet(h http.Handler) http.Handler {

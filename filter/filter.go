@@ -46,6 +46,7 @@ func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string
 	var matcherSets [][]*labels.Matcher
 
 	for id, matches := range matchMap {
+		matcherSets = make([][]*labels.Matcher, 0)
 		for _, s := range matches {
 			matchers, err := promql.ParseMetricSelector(s)
 			if err != nil {
@@ -59,6 +60,17 @@ func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string
 
 	fm.matchMemMap = matchMemMap
 	fm.idHeaderName = idHeaderName
+	return nil
+}
+
+// CopyConfig apply new config from another manager
+func (fm *Manager) CopyConfig(manager *Manager) error {
+	fm.mtx.Lock()
+	defer fm.mtx.Unlock()
+
+	fm.idHeaderName = manager.idHeaderName
+	fm.matchMemMap = manager.matchMemMap
+
 	return nil
 }
 
