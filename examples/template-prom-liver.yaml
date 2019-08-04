@@ -3,12 +3,6 @@ apiVersion: v1
 kind: Template
 metadata:
   name: prom-liver
-parameters:
-- name: APP_NAME
-  description: Имя приложения как основа наименования всего прочего.
-  displayName: Имя приложения
-  required: true
-  value: prom-liver
 objects:
 - apiVersion: v1
   kind: DeploymentConfig
@@ -36,7 +30,7 @@ objects:
           deploymentconfig: prom-liver
       spec:
         containers:
-        - image: docker-registry.x5.ru/laoleesch/prom-liver:latest
+        - image: laoleesch/prom-liver:latest
           args:
           - '--config=/config/config.yaml'
           imagePullPolicy: Always
@@ -65,8 +59,6 @@ objects:
 - apiVersion: v1
   kind: Service
   metadata:
-    annotations:
-      openshift.io/generated-by: OpenShiftNewApp
     labels:
       app: prom-liver
     name: prom-liver
@@ -111,10 +103,10 @@ objects:
         auth-header: 'X-Prom-Liver-Id'    #default X-Prom-Liver-Id
        
       clients:
-        - id: 'sre-monitoring'
+        - id: 'monitoring'
           auth:
             bearer:
-              token: 'eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.e---БЛАБЛАБЛА-----jWZwRYJE2ll2DaAaVA'
+              token: 'eyJhbGciOiJSUzI1N---blahblahblah-----jWZwRYJE2ll2DaAaVA'
           match:
             - 'up{project="sentry"}'
   status: {}

@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-// MatcherSet is a union of match[]
+// matcherSet is a union of match[]
 type matcherSet [][]*labels.Matcher
 
 // doesn't work. I'm stupid :(

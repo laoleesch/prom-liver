@@ -9,24 +9,27 @@ import (
 	"github.com/go-kit/kit/log/level"
 )
 
+// type of auth schema
+const (
+	TBasic = iota
+	TBearer
+	THeader
+)
+
 // Manager describe set of auth maps (auth: id)
 type Manager struct {
-	authHeaderName   string            //Header name
-	authMemHeaderSet []string          //client ids
-	authMemBasicMap  map[string]string //base64(user:password):id
-	authMemBearerMap map[string]string //token:id
-	logger           kitlog.Logger
-	mtx              sync.RWMutex
+	authHeaderName string                    //Header name
+	authMemMap     map[int]map[string]string //map (type->map) of maps (base64->id, token->id, header_value->bool)
+	logger         kitlog.Logger
+	mtx            sync.RWMutex
 }
 
 // NewManager creates new instance
 func NewManager(l *kitlog.Logger) *Manager {
 	am := &Manager{
-		authHeaderName:   "",
-		authMemHeaderSet: make([]string, 0),
-		authMemBasicMap:  make(map[string]string),
-		authMemBearerMap: make(map[string]string),
-		logger:           *l,
+		authHeaderName: "",
+		authMemMap:     make(map[int]map[string]string),
+		logger:         *l,
 	}
 	return am
 }
@@ -34,17 +37,13 @@ func NewManager(l *kitlog.Logger) *Manager {
 // ApplyConfig apply new config
 func (am *Manager) ApplyConfig(
 	authHeaderName string,
-	authMemHeaderSet []string,
-	authMemBasicMap map[string]string,
-	authMemBearerMap map[string]string) error {
+	authMemMap map[int]map[string]string) error {
 
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 
 	am.authHeaderName = authHeaderName
-	am.authMemHeaderSet = authMemHeaderSet
-	am.authMemBasicMap = authMemBasicMap
-	am.authMemBearerMap = authMemBearerMap
+	am.authMemMap = authMemMap
 
 	return nil
 }
@@ -55,9 +54,7 @@ func (am *Manager) CopyConfig(manager *Manager) error {
 	defer am.mtx.Unlock()
 
 	am.authHeaderName = manager.authHeaderName
-	am.authMemHeaderSet = manager.authMemHeaderSet
-	am.authMemBasicMap = manager.authMemBasicMap
-	am.authMemBearerMap = manager.authMemBearerMap
+	am.authMemMap = manager.authMemMap
 
 	return nil
 }
@@ -67,12 +64,10 @@ func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// check header
 		if header := r.Header.Get(am.authHeaderName); header != "" {
-			for i := range am.authMemHeaderSet {
-				if am.authMemHeaderSet[i] == header {
-					level.Debug(am.logger).Log("msg", "found header", "id", header)
-					h.ServeHTTP(w, r)
-					return
-				}
+			if _, ok := am.authMemMap[THeader][header]; ok {
+				level.Debug(am.logger).Log("msg", "found header", "id", header)
+				h.ServeHTTP(w, r)
+				return
 			}
 		}
 		auth := r.Header.Get("Authorization")
@@ -88,11 +83,9 @@ func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 			level.Debug(am.logger).Log("msg", "found Bearer Authorizatoin header")
 			am.bearerAuthInMem(h).ServeHTTP(w, r)
 			return
-		} else {
-			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-			level.Debug(am.logger).Log("msg", "Incorrect Authorization header value", "value", auth)
-			return
 		}
+		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+		level.Debug(am.logger).Log("msg", "Incorrect Authorization header value", "value", auth)
 	})
 }
 
@@ -105,7 +98,7 @@ func (am *Manager) basicAuthInMem(h http.Handler) http.Handler {
 			level.Debug(am.logger).Log("msg", "Incorrect Authorization header Basic value")
 			return
 		}
-		if v, ok := am.authMemBasicMap[auth[6:]]; ok {
+		if v, ok := am.authMemMap[TBasic][auth[6:]]; ok {
 			r.Header.Set(am.authHeaderName, v)
 			level.Debug(am.logger).Log("msg", "correct Basic auth", "id", v)
 		} else {
@@ -127,7 +120,7 @@ func (am *Manager) bearerAuthInMem(h http.Handler) http.Handler {
 			level.Debug(am.logger).Log("msg", "Incorrect Authorization header Bearer token value")
 			return
 		}
-		if v, ok := am.authMemBearerMap[auth[7:]]; ok {
+		if v, ok := am.authMemMap[TBearer][auth[7:]]; ok {
 			r.Header.Set(am.authHeaderName, v)
 			level.Debug(am.logger).Log("msg", "correct Bearer auth", "id", v)
 		} else {
