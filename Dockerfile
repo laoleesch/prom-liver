@@ -3,11 +3,11 @@ ENV CGO_ENABLED=0
 ADD . /src
 RUN cd /src && \
     go get -d -v ./... && \
-    go build -o goapp && \
-    chmod a+x goapp
+    go build -o prom-liver && \
+    chmod a+x prom-liver
 
 FROM golang:alpine
 WORKDIR /app
-COPY --from=build-env /src/goapp /app/
+COPY --from=build-env /src/prom-liver /app/
 EXPOSE 8080/tcp
-ENTRYPOINT [ "/app/goapp" ]
+ENTRYPOINT [ "/app/prom-liver" ]
