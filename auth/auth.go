@@ -73,6 +73,7 @@ func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 		auth := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
 		if len(auth) != 2 || auth[0] == "" {
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			level.Debug(am.logger).Log("msg", "Empty or incorrect auth header")
 			return
 		}
 		switch strings.ToLower(auth[0]) {
