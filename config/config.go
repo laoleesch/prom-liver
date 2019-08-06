@@ -85,13 +85,11 @@ func readConfigFile(configFile string, l *kitlog.Logger) (Config, error) {
 	// read configfile
 	file, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		level.Error(*l).Log("msg", "cannot read config file", "err", err)
-		return newCfg, err
+		return newCfg, errors.Wrapf(err, "cannot read config file")
 	}
 	err = yaml.UnmarshalStrict(file, &newCfg)
 	if err != nil {
-		level.Error(*l).Log("msg", "cannot parse config file", "err", err)
-		return newCfg, err
+		return newCfg, errors.Wrapf(err, "cannot parse config file")
 	}
 
 	return newCfg, nil
@@ -103,8 +101,7 @@ func readClientsConfigFiles(patFiles []string, l *kitlog.Logger) (map[string]Cli
 
 	for _, p := range patFiles {
 		fs, err := filepath.Glob(p)
-
-		if err != nil || len(fs) == 0 {
+		if err != nil {
 			return nil, errors.Wrapf(err, "error retrieving rule files for %s", p)
 		}
 		files = append(files, fs...)
@@ -114,14 +111,12 @@ func readClientsConfigFiles(patFiles []string, l *kitlog.Logger) (map[string]Cli
 	for _, f := range files {
 		file, err := ioutil.ReadFile(f)
 		if err != nil {
-			level.Error(*l).Log("msg", "cannot read config file", "err", err)
-			return nil, err
+			return nil, errors.Wrapf(err, "cannot read config file")
 		}
 		clients := make(Client)
 		err = yaml.UnmarshalStrict(file, &clients)
 		if err != nil {
-			level.Error(*l).Log("msg", "cannot parse config file", "err", err)
-			return nil, err
+			return nil, errors.Wrapf(err, "cannot parse config file")
 		}
 		fileClients[f] = clients
 	}
@@ -147,15 +142,12 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 		for id, conf := range clients {
 			if _, ok := newCfg.Clients[id]; ok {
 				err = fmt.Errorf("Duplicate client ID from files: ID=%v, file=%v", id, file)
-				level.Error(*l).Log("msg", "error add client from file", "err", err)
-			} else {
-				newCfg.Clients[id] = conf
+				return newCfg, err
 			}
+			newCfg.Clients[id] = conf
 		}
 
 	}
-
-	//TODO: check unique usernames and other auth credentials...
 
 	return newCfg, err
 }
