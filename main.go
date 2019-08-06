@@ -88,13 +88,11 @@ func main() {
 		signal.Notify(hup, syscall.SIGHUP)
 
 		for {
-			select {
-			case <-hup:
-				if err := reloadConfig(cmdConfigFile, &logger, amp, fmp); err != nil {
-					level.Error(logger).Log("msg", "Error reloading config", "err", err)
-				} else {
-					level.Info(logger).Log("msg", "Config has been successfuly reloaded", "file", cmdConfigFile)
-				}
+			<-hup
+			if err := reloadConfig(cmdConfigFile, &logger, amp, fmp); err != nil {
+				level.Error(logger).Log("msg", "Error reloading config", "err", err)
+			} else {
+				level.Info(logger).Log("msg", "Config has been successfuly reloaded", "file", cmdConfigFile)
 			}
 		}
 	}()
