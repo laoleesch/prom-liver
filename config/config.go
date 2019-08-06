@@ -2,10 +2,13 @@ package config
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io/ioutil"
+	"path/filepath"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 )
 
@@ -18,7 +21,7 @@ var (
 	// DefaultServerConfig is the default global configuration.
 	DefaultServerConfig = ServerConfig{
 		Port:           "8080",
-		Uri:            "/federate",
+		URI:            "/federate",
 		Proxy:          "http://localhost:9090/",
 		Authentication: true,
 		HeaderName:     "X-Prom-Liver-Id",
@@ -27,23 +30,30 @@ var (
 
 // Config includes all config.yaml
 type Config struct {
-	Server  ServerConfig   `yaml:"server,omitempty"`
-	Clients []ClientConfig `yaml:"clients"`
+	Server       ServerConfig `yaml:"server,omitempty"`
+	ClientsFiles []string     `yaml:"clients_files,omitempty"`
+	Clients      Client       `yaml:"clients,omitempty"`
 }
 
 // ServerConfig includes only "server:" three
 type ServerConfig struct {
 	Port           string `yaml:"port,omitempty"`
-	Uri            string `yaml:"uri,omitempty"`
+	URI            string `yaml:"uri,omitempty"`
 	Proxy          string `yaml:"proxy,omitempty"`
 	Authentication bool   `yaml:"authentication,omitempty"`
 	HeaderName     string `yaml:"id-header,omitempty"`
 }
 
-//ClientConfig includes configuration for each client
+//Client includes configuration for each client
+type Client map[ClientID]ClientConfig
+
+//ClientID is client id
+type ClientID string
+
+//ClientConfig client configuration
 type ClientConfig struct {
-	ID    string     `yaml:"id"`
-	Auth  AuthSchema `yaml:"auth"`
+	// ID    string     `yaml:"id"`
+	Auth  AuthSchema `yaml:"auth,omitempty"`
 	Match []string   `yaml:"match"`
 }
 
@@ -70,6 +80,7 @@ type AuthSchemaBearer struct {
 
 func readConfigFile(configFile string, l *kitlog.Logger) (Config, error) {
 	newCfg := DefaultConfig
+	level.Debug(*l).Log("msg", "try read config file", "file", configFile)
 
 	// read configfile
 	file, err := ioutil.ReadFile(configFile)
@@ -80,15 +91,69 @@ func readConfigFile(configFile string, l *kitlog.Logger) (Config, error) {
 	err = yaml.UnmarshalStrict(file, &newCfg)
 	if err != nil {
 		level.Error(*l).Log("msg", "cannot parse config file", "err", err)
-		// os.Exit(2)
+		return newCfg, err
 	}
 
-	return newCfg, err
+	return newCfg, nil
+}
+
+func readClientsConfigFiles(patFiles []string, l *kitlog.Logger) (map[string]Client, error) {
+	fileClients := make(map[string]Client)
+	var files []string
+
+	for _, p := range patFiles {
+		fs, err := filepath.Glob(p)
+
+		if err != nil || len(fs) == 0 {
+			return nil, errors.Wrapf(err, "error retrieving rule files for %s", p)
+		}
+		files = append(files, fs...)
+	}
+	level.Debug(*l).Log("msg", "found client config files", "files", fmt.Sprint(files))
+
+	for _, f := range files {
+		file, err := ioutil.ReadFile(f)
+		if err != nil {
+			level.Error(*l).Log("msg", "cannot read config file", "err", err)
+			return nil, err
+		}
+		clients := make(Client)
+		err = yaml.UnmarshalStrict(file, &clients)
+		if err != nil {
+			level.Error(*l).Log("msg", "cannot parse config file", "err", err)
+			return nil, err
+		}
+		fileClients[f] = clients
+	}
+
+	return fileClients, nil
 }
 
 // LoadConfig for apply new config
 func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 	newCfg, err := readConfigFile(configFile, l)
+	if err != nil {
+		return newCfg, err
+	}
+
+	// load client config files
+	clientsFromFiles, err := readClientsConfigFiles(newCfg.ClientsFiles, l)
+	if err != nil {
+		return newCfg, err
+	}
+	level.Debug(*l).Log("msg", "found clients from files", "cnt", len(clientsFromFiles))
+	for file, clients := range clientsFromFiles {
+		level.Debug(*l).Log("msg", "read file", "file", file)
+		for id, conf := range clients {
+			if _, ok := newCfg.Clients[id]; ok {
+				err = fmt.Errorf("Duplicate client ID from files: ID=%v, file=%v", id, file)
+				level.Error(*l).Log("msg", "error add client from file", "err", err)
+			} else {
+				newCfg.Clients[id] = conf
+			}
+		}
+
+	}
 
 	//TODO: check unique usernames and other auth credentials...
 

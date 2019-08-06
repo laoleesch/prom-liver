@@ -8,8 +8,11 @@ server:
   authentication: true              #default true
   id-header: 'X-Prom-Liver-Id'    #default X-Prom-Liver-Id (could be reloaded)
 
+clients_files:
+  - "examples/client*"
+
 clients:
-  - id: 'go-metrics'
+  'go-metrics': 
     auth:
       basic:
         user: user1
@@ -17,22 +20,16 @@ clients:
       header: true
       bearer:
         files:
-          - "examples/bearer_token.txt"
+          - "examples/secret_token.txt"
     match:
       - '{project=~"go-.*"}'
       - '{env="test"}'
       - '{some=~".*oops.*"}'
-  - id: 'cadvisor'
+  'cadvisor':
     auth:
-      basic:
-        files:
-          - 'examples/bearer_token.txt'
       bearer:
         tokens: 
           - 'TESTTEST'
           - 'TESTTEST2'
     match:
       - 'up{project="cadvisor", env="test"}'
-    
-# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22go-metrics%22%7D -H "Authorization: Basic Y2Fkdmlzb3I6Y2Fkdmlzb3I=" -H "X-Prom-Liver-Id: go-metrics"
-# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22cadvisor%22,%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"

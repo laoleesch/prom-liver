@@ -59,7 +59,7 @@ func main() {
 	}
 
 	level.Info(logger).Log("server.port", Cfg.Server.Port)
-	level.Info(logger).Log("server.uri", Cfg.Server.Uri)
+	level.Info(logger).Log("server.uri", Cfg.Server.URI)
 	level.Info(logger).Log("server.proxy", Cfg.Server.Proxy)
 	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
 	level.Info(logger).Log("server.id-header", Cfg.Server.HeaderName)
@@ -100,13 +100,13 @@ func main() {
 
 	// run handlers
 	if Cfg.Server.Authentication {
-		http.Handle(Cfg.Server.Uri,
+		http.Handle(Cfg.Server.URI,
 			handleGet(
 				amp.CheckAuth(
 					fmp.FilterMatches(
 						serveReverseProxy(Cfg.Server.Proxy)))))
 	} else {
-		http.Handle(Cfg.Server.Uri,
+		http.Handle(Cfg.Server.URI,
 			handleGet(
 				fmp.FilterMatches(
 					serveReverseProxy(Cfg.Server.Proxy))))
@@ -152,11 +152,11 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 
 	level.Debug(logger).Log("msg", "prepearing auth config")
 
-	for _, c := range cfg.Clients {
+	for id, c := range cfg.Clients {
 		// Header id set for Auth-enabled-cases
 		if c.Auth.Header {
-			authMemMap[auth.THeader][c.ID] = "true"
-			level.Debug(logger).Log("client.id", c.ID, "auth", "header")
+			authMemMap[auth.THeader][string(id)] = "true"
+			level.Debug(logger).Log("client.id", string(id), "auth", "header")
 		}
 		// Basic base64-id map
 		authMemBasicMapClient = make(map[string]string)
@@ -164,15 +164,15 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 			for _, b := range basicList {
 				//maybe there needs to decode base64 and check login, not whole encoded login-pass
 				if id, ok := authMemMap[auth.TBasic][b]; ok {
-					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, c.ID)
+					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, string(id))
 					return nil, err
 				}
-				authMemBasicMapClient[b] = c.ID
+				authMemBasicMapClient[b] = string(id)
 			}
 			for b := range authMemBasicMapClient {
 				authMemMap[auth.TBasic][b] = authMemBasicMapClient[b]
 			}
-			level.Debug(logger).Log("client.id", c.ID, "auth", "basic", "credentials", len(authMemBasicMapClient))
+			level.Debug(logger).Log("client.id", string(id), "auth", "basic", "credentials", len(authMemBasicMapClient))
 		}
 
 		// Bearer token-id map
@@ -180,15 +180,15 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 		if bearerList, cnt := c.Auth.Bearer.GetAll(&logger); cnt > 0 {
 			for _, t := range bearerList {
 				if id, ok := authMemMap[auth.TBearer][t]; ok {
-					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, c.ID)
+					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, string(id))
 					return nil, err
 				}
-				authMemBearerMapClient[t] = c.ID
+				authMemBearerMapClient[t] = string(id)
 			}
 			for t := range authMemBearerMapClient {
 				authMemMap[auth.TBearer][t] = authMemBearerMapClient[t]
 			}
-			level.Debug(logger).Log("client.id", c.ID, "auth", "bearer", "tokens", len(authMemBearerMapClient))
+			level.Debug(logger).Log("client.id", string(id), "auth", "bearer", "tokens", len(authMemBearerMapClient))
 		}
 	}
 	newAuth := auth.NewManager(&logger)
@@ -204,8 +204,8 @@ func configureFilter(cfg *config.Config) (*filter.Manager, error) {
 	newFilter := filter.NewManager(&logger)
 
 	matchMap := make(map[string][]string)
-	for _, c := range cfg.Clients {
-		matchMap[c.ID] = c.Match
+	for id, c := range cfg.Clients {
+		matchMap[string(id)] = c.Match
 	}
 	err := newFilter.ApplyConfig(cfg.Server.HeaderName, matchMap)
 	if err != nil {
