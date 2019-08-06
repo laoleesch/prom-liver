@@ -55,7 +55,7 @@ func main() {
 	Cfg := config.DefaultConfig
 	Cfg, err = config.LoadConfig(cmdConfigFile, &logger)
 	if err != nil {
-		level.Error(logger).Log("msg", "cannot read config", "err", err)
+		level.Error(logger).Log("msg", "Error load config", "err", err)
 		os.Exit(2)
 	}
 

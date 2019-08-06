@@ -33,3 +33,6 @@ clients:
           - 'TESTTEST2'
     match:
       - 'up{project="cadvisor", env="test"}'
+
+# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22go-metrics%22%7D -H "Authorization: Basic Y2Fkdmlzb3I6Y2Fkdmlzb3I=" -H "X-Prom-Liver-Id: go-metrics"
+# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22cadvisor%22,%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"

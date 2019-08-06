@@ -149,6 +149,11 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 
 	}
 
+	//check empty clients set :)
+	if len(newCfg.Clients) == 0 {
+		return newCfg, fmt.Errorf("The set of clients is empty. Are you sure?")
+	}
+
 	return newCfg, err
 }
 
