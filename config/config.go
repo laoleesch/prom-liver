@@ -122,6 +122,7 @@ func readClientsConfigFiles(patFiles []string, l *kitlog.Logger) (map[string]Cli
 func readCredsFiles(patFiles []string, l *kitlog.Logger) ([]string, error) {
 	filesContent := make([]string, 0)
 	files, err := findFiles(patFiles)
+	level.Debug(*l).Log("msg", "found credentials files", "cnt", len(files))
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot find files")
 	}
@@ -180,12 +181,11 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 
 	//read credentials from files and etc
 	for id, clientConfig := range newCfg.Clients {
-		tmpClientConf := newCfg.Clients[id]
 		// copy user-password to []Base64
 		if clientConfig.Auth.Basic.User != "" && clientConfig.Auth.Basic.Password != "" {
 			strb := []byte(clientConfig.Auth.Basic.User + ":" + clientConfig.Auth.Basic.Password)
 			str := base64.StdEncoding.EncodeToString(strb)
-			tmpClientConf.Auth.Basic.Base64 = append(tmpClientConf.Auth.Basic.Base64, str)
+			clientConfig.Auth.Basic.Base64 = append(clientConfig.Auth.Basic.Base64, str)
 		}
 		// read base64 files and copy to []Base64
 		if len(clientConfig.Auth.Basic.Files) > 0 {
@@ -193,17 +193,17 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 			if err != nil {
 				return newCfg, err
 			}
-			tmpClientConf.Auth.Basic.Base64 = append(tmpClientConf.Auth.Basic.Base64, base64...)
+			clientConfig.Auth.Basic.Base64 = append(clientConfig.Auth.Basic.Base64, base64...)
 		}
 		// read tokens files and copy to []Tokens
-		if len(clientConfig.Auth.Basic.Files) > 0 {
+		if len(clientConfig.Auth.Bearer.Files) > 0 {
 			tokens, err := readCredsFiles(clientConfig.Auth.Bearer.Files, l)
 			if err != nil {
 				return newCfg, err
 			}
-			tmpClientConf.Auth.Bearer.Tokens = append(tmpClientConf.Auth.Bearer.Tokens, tokens...)
+			clientConfig.Auth.Bearer.Tokens = append(clientConfig.Auth.Bearer.Tokens, tokens...)
 		}
-		newCfg.Clients[id] = tmpClientConf
+		newCfg.Clients[id] = clientConfig
 	}
 
 	return newCfg, err

@@ -20,7 +20,7 @@ clients:
       header: true
       bearer:
         files:
-          - "examples/secret_token.txt"
+          - "examples/secret_*"
     match:
       - '{project=~"go-.*"}'
       - '{env="test"}'
