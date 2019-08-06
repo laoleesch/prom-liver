@@ -159,11 +159,11 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 		}
 		// Basic base64-id map
 		authMemBasicMapClient = make(map[string]string)
-		if basicList, cnt := c.Auth.Basic.GetAll(&logger); cnt > 0 {
-			for _, b := range basicList {
-				//maybe there needs to decode base64 and check login, not whole encoded login-pass
-				if id, ok := authMemMap[auth.TBasic][b]; ok {
-					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, string(id))
+		if len(c.Auth.Basic.Base64) > 0 {
+			for _, b := range c.Auth.Basic.Base64 {
+				//TODO: maybe there needs to decode base64 and check login, not whole encoded login-pass
+				if newid, ok := authMemMap[auth.TBasic][b]; ok {
+					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, string(newid))
 					return nil, err
 				}
 				authMemBasicMapClient[b] = string(id)
@@ -176,10 +176,10 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 
 		// Bearer token-id map
 		authMemBearerMapClient = make(map[string]string)
-		if bearerList, cnt := c.Auth.Bearer.GetAll(&logger); cnt > 0 {
-			for _, t := range bearerList {
-				if id, ok := authMemMap[auth.TBearer][t]; ok {
-					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, string(id))
+		if len(c.Auth.Bearer.Tokens) > 0 {
+			for _, t := range c.Auth.Bearer.Tokens {
+				if newid, ok := authMemMap[auth.TBearer][t]; ok {
+					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, string(newid))
 					return nil, err
 				}
 				authMemBearerMapClient[t] = string(id)

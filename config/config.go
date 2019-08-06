@@ -97,14 +97,9 @@ func readConfigFile(configFile string, l *kitlog.Logger) (Config, error) {
 
 func readClientsConfigFiles(patFiles []string, l *kitlog.Logger) (map[string]Client, error) {
 	fileClients := make(map[string]Client)
-	var files []string
-
-	for _, p := range patFiles {
-		fs, err := filepath.Glob(p)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error retrieving rule files for %s", p)
-		}
-		files = append(files, fs...)
+	files, err := findFiles(patFiles)
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot find files")
 	}
 	level.Debug(*l).Log("msg", "found client config files", "files", fmt.Sprint(files))
 
@@ -122,6 +117,35 @@ func readClientsConfigFiles(patFiles []string, l *kitlog.Logger) (map[string]Cli
 	}
 
 	return fileClients, nil
+}
+
+func readCredsFiles(patFiles []string, l *kitlog.Logger) ([]string, error) {
+	filesContent := make([]string, 0)
+	files, err := findFiles(patFiles)
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot find files")
+	}
+
+	for _, f := range files {
+		content, err := ioutil.ReadFile(f)
+		if err != nil {
+			return nil, errors.Wrapf(err, "cannot read file")
+		}
+		filesContent = append(filesContent, string(content))
+	}
+
+	return filesContent, nil
+}
+
+func findFiles(patFiles []string) (files []string, err error) {
+	for _, p := range patFiles {
+		fs, err := filepath.Glob(p)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, fs...)
+	}
+	return
 }
 
 // LoadConfig for apply new config
@@ -154,59 +178,33 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 		return newCfg, fmt.Errorf("The set of clients is empty. Are you sure?")
 	}
 
+	//read credentials from files and etc
+	for id, clientConfig := range newCfg.Clients {
+		tmpClientConf := newCfg.Clients[id]
+		// copy user-password to []Base64
+		if clientConfig.Auth.Basic.User != "" && clientConfig.Auth.Basic.Password != "" {
+			strb := []byte(clientConfig.Auth.Basic.User + ":" + clientConfig.Auth.Basic.Password)
+			str := base64.StdEncoding.EncodeToString(strb)
+			tmpClientConf.Auth.Basic.Base64 = append(tmpClientConf.Auth.Basic.Base64, str)
+		}
+		// read base64 files and copy to []Base64
+		if len(clientConfig.Auth.Basic.Files) > 0 {
+			base64, err := readCredsFiles(clientConfig.Auth.Basic.Files, l)
+			if err != nil {
+				return newCfg, err
+			}
+			tmpClientConf.Auth.Basic.Base64 = append(tmpClientConf.Auth.Basic.Base64, base64...)
+		}
+		// read tokens files and copy to []Tokens
+		if len(clientConfig.Auth.Basic.Files) > 0 {
+			tokens, err := readCredsFiles(clientConfig.Auth.Bearer.Files, l)
+			if err != nil {
+				return newCfg, err
+			}
+			tmpClientConf.Auth.Bearer.Tokens = append(tmpClientConf.Auth.Bearer.Tokens, tokens...)
+		}
+		newCfg.Clients[id] = tmpClientConf
+	}
+
 	return newCfg, err
-}
-
-// GetAll return slice of base64 credentials and len of this slice
-func (s *AuthSchemaBasic) GetAll(l *kitlog.Logger) ([]string, int) {
-	base64tokens := make([]string, 0)
-
-	if len(s.Base64) > 0 {
-		for _, b := range s.Base64 {
-			base64tokens = append(base64tokens, b)
-		}
-	}
-
-	// read user-password
-	if s.User != "" && s.Password != "" {
-		strb := []byte(s.User + ":" + s.Password)
-		str := base64.StdEncoding.EncodeToString(strb)
-		base64tokens = append(base64tokens, str)
-	}
-
-	//read basic files
-	if len(s.Files) > 0 {
-		for _, f := range s.Files {
-			content, err := ioutil.ReadFile(f)
-			if err != nil {
-				level.Error(*l).Log("msg", "cannot read basic auth file", "err", err)
-			}
-			base64tokens = append(base64tokens, string(content))
-		}
-	}
-
-	return base64tokens, len(base64tokens)
-}
-
-// GetAll return slice of bearer tokens and len of this slice
-func (s *AuthSchemaBearer) GetAll(l *kitlog.Logger) ([]string, int) {
-	bearerTokens := make([]string, 0)
-
-	if len(s.Tokens) > 0 {
-		for _, t := range s.Tokens {
-			bearerTokens = append(bearerTokens, t)
-		}
-	}
-	//read bearer files
-	if len(s.Files) > 0 {
-		for _, f := range s.Files {
-			content, err := ioutil.ReadFile(f)
-			if err != nil {
-				level.Error(*l).Log("msg", "cannot read bearer auth file", "err", err)
-			}
-			bearerTokens = append(bearerTokens, string(content))
-		}
-	}
-
-	return bearerTokens, len(bearerTokens)
 }
