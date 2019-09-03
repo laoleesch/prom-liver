@@ -20,8 +20,9 @@ var (
 
 	// DefaultServerConfig is the default global configuration.
 	DefaultServerConfig = ServerConfig{
-		Port:           "8080",
-		URI:            "/federate",
+		Port: "8080",
+		// URI:            "/federate",
+		// URIPrefix:      "",
 		Proxy:          "http://localhost:9090/",
 		Authentication: true,
 		HeaderName:     "X-Prom-Liver-Id",
@@ -37,8 +38,9 @@ type Config struct {
 
 // ServerConfig includes only "server:" three
 type ServerConfig struct {
-	Port           string `yaml:"port,omitempty"`
-	URI            string `yaml:"uri,omitempty"`
+	Port string `yaml:"port,omitempty"`
+	// URI            string `yaml:"uri,omitempty"`
+	// URIPrefix      string `yaml:"uri-prefix,omitempty"`
 	Proxy          string `yaml:"proxy,omitempty"`
 	Authentication bool   `yaml:"authentication,omitempty"`
 	HeaderName     string `yaml:"id-header,omitempty"`

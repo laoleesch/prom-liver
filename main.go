@@ -14,9 +14,11 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
@@ -60,7 +62,6 @@ func main() {
 	}
 
 	level.Info(logger).Log("server.port", Cfg.Server.Port)
-	level.Info(logger).Log("server.uri", Cfg.Server.URI)
 	level.Info(logger).Log("server.proxy", Cfg.Server.Proxy)
 	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
 	level.Info(logger).Log("server.id-header", Cfg.Server.HeaderName)
@@ -98,20 +99,36 @@ func main() {
 	}()
 
 	// run handlers
+	r := mux.NewRouter()
+	r = r.Methods("GET").Subrouter()
 	if Cfg.Server.Authentication {
-		http.Handle(Cfg.Server.URI,
-			handleGet(
-				amp.CheckAuth(
-					fmp.FilterMatches(
-						serveReverseProxy(Cfg.Server.Proxy)))))
-	} else {
-		http.Handle(Cfg.Server.URI,
-			handleGet(
-				fmp.FilterMatches(
-					serveReverseProxy(Cfg.Server.Proxy))))
+		r.Use(amp.CheckAuth)
+	}
+	r.Use(fmp.FilterMatches)
+
+	r.Handle("/federate", serveReverseProxy(Cfg.Server.Proxy)).Methods("GET")
+	r.Handle("/api/v1/query", serveReverseProxy(Cfg.Server.Proxy)).Methods("GET")
+
+	if err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		methods, err := route.GetMethods()
+		pathTemplate, err := route.GetPathTemplate()
+		if err != nil {
+			return err
+		}
+		level.Info(logger).Log("server.uri", pathTemplate, "server.uri.methods", fmt.Sprint(methods))
+		return nil
+	}); err != nil {
+		level.Error(logger).Log("msg", "Error while getting all routes", "err", err)
 	}
 
-	if err := http.ListenAndServe(":"+Cfg.Server.Port, nil); err != nil {
+	srv := &http.Server{
+		Handler:      r,
+		Addr:         "127.0.0.1:" + Cfg.Server.Port,
+		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  15 * time.Second,
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
 		level.Error(logger).Log("msg", "cannot start http listener", "err", err)
 		os.Exit(2)
 	}
@@ -242,17 +259,6 @@ func reloadConfig(filename string, l *kitlog.Logger, am *auth.Manager, fm *filte
 	return nil
 }
 
-// filter non-GET requests
-func handleGet(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
 // reverse proxy
 func serveReverseProxy(target string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -265,6 +271,7 @@ func serveReverseProxy(target string) http.Handler {
 		r.URL.Scheme = url.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = url.Host
+		r.RequestURI = url.EscapedPath() + r.RequestURI
 
 		if cmdLogLevel == "debug" {
 			level.Debug(logger).Log("msg", "out request", "dump", requestDump(r))
