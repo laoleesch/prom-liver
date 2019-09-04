@@ -6,6 +6,8 @@ server:
   port: 8080                        #default 8080
   authentication: true              #default true
   id-header: 'X-Prom-Liver-Id'    #default X-Prom-Liver-Id (could be reloaded)
+  api-enable: true                #default true
+  federate-enable: true           #default true
 
 clients_files:
   - "examples/client*"

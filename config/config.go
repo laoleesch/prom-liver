@@ -23,6 +23,8 @@ var (
 		Port: "8080",
 		// URI:            "/federate",
 		// URIPrefix:      "",
+		Api:            true,
+		Federate:       true,
 		Proxy:          "http://localhost:9090/",
 		Authentication: true,
 		HeaderName:     "X-Prom-Liver-Id",
@@ -41,6 +43,8 @@ type ServerConfig struct {
 	Port string `yaml:"port,omitempty"`
 	// URI            string `yaml:"uri,omitempty"`
 	// URIPrefix      string `yaml:"uri-prefix,omitempty"`
+	Api            bool   `yaml:"api-enable,omitempty"`
+	Federate       bool   `yaml:"federate-enable,omitempty"`
 	Proxy          string `yaml:"proxy,omitempty"`
 	Authentication bool   `yaml:"authentication,omitempty"`
 	HeaderName     string `yaml:"id-header,omitempty"`
