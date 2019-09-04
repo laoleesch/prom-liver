@@ -163,21 +163,23 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 	}
 
 	// load client config files
-	clientsFromFiles, err := readClientsConfigFiles(newCfg.ClientsFiles, l)
-	if err != nil {
-		return newCfg, err
-	}
-	level.Debug(*l).Log("msg", "found clients from files", "cnt", len(clientsFromFiles))
-	for file, clients := range clientsFromFiles {
-		level.Debug(*l).Log("msg", "read file", "file", file)
-		for id, conf := range clients {
-			if _, ok := newCfg.Clients[id]; ok {
-				err = fmt.Errorf("Duplicate client ID from files: ID=%v, file=%v", id, file)
-				return newCfg, err
-			}
-			newCfg.Clients[id] = conf
+	if len(newCfg.ClientsFiles) > 0 {
+		clientsFromFiles, err := readClientsConfigFiles(newCfg.ClientsFiles, l)
+		if err != nil {
+			return newCfg, err
 		}
+		level.Debug(*l).Log("msg", "found clients from files", "cnt", len(clientsFromFiles))
+		for file, clients := range clientsFromFiles {
+			level.Debug(*l).Log("msg", "read file", "file", file)
+			for id, conf := range clients {
+				if _, ok := newCfg.Clients[id]; ok {
+					err = fmt.Errorf("Duplicate client ID from files: ID=%v, file=%v", id, file)
+					return newCfg, err
+				}
+				newCfg.Clients[id] = conf
+			}
 
+		}
 	}
 
 	//check empty clients set :)
