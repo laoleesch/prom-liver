@@ -74,8 +74,8 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	return nil
 }
 
-// FilterMatches main function
-func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
+// FilterFederate main function
+func (fm *Manager) FilterFederate(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		rID := r.Header.Get(fm.idHeaderName)
@@ -85,47 +85,55 @@ func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
 			return
 		}
 
-		// prometheus/web/federate.go part :)
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, fmt.Sprintf("ERROR: error parsing form values: %v", err), http.StatusBadRequest)
 			level.Warn(fm.logger).Log("msg", "cannot parse form values", "id", rID, "err", err)
 			return
 		}
 
-		var rMatcherSets [][]*labels.Matcher
-		level.Debug(fm.logger).Log("msg", "request match[] sets", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
-		for _, s := range r.Form["match[]"] {
-			matchers, err := promql.ParseMetricSelector(s)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				level.Warn(fm.logger).Log("msg", "cannot parse match[] sets", "id", rID, "value", s, "err", err)
-				return
-			}
-			rMatcherSets = append(rMatcherSets, matchers)
+		filteredMatches, err := fm.labelsParseAndFilter(r.Form["match[]"], rID)
+		if err != nil {
+			level.Warn(fm.logger).Log("msg", "cannot parse match[] sets", "id", rID, "err", err)
 		}
 
-		// clean form
-		r.Form.Del("match[]")
-
-		// compare matcherSets with white list
-
-		for _, mr := range rMatcherSets {
-			for _, mm := range fm.matchMemMap[rID] {
-				if matchIntersection(mr, mm) {
-					r.Form.Add("match[]", toParam(mr))
-					break
-				}
-			}
-		}
-
-		if len(r.Form["match[]"]) == 0 {
+		if len(filteredMatches) == 0 {
 			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
-			level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", rMatcherSets))
+			level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
 			return
+		}
+		// clean and fill form
+		r.Form.Del("match[]")
+		for _, i := range filteredMatches {
+			r.Form.Add("match[]", i)
 		}
 
 		h.ServeHTTP(w, r)
 	})
+}
+
+func (fm *Manager) labelsParseAndFilter(matches []string, rID string) ([]string, error) {
+	var rMatcherSets [][]*labels.Matcher
+	filteredMatches := make([]string, 0)
+	level.Debug(fm.logger).Log("msg", "request matches sets", "id", rID, "value", fmt.Sprintf("%v", matches))
+	for _, s := range matches {
+		matchers, err := promql.ParseMetricSelector(s)
+		if err != nil {
+			return filteredMatches, err
+		}
+		rMatcherSets = append(rMatcherSets, matchers)
+	}
+
+	// compare matcherSets with white list
+	for _, mr := range rMatcherSets {
+		for _, mm := range fm.matchMemMap[rID] {
+			if matchIntersection(mr, mm) {
+				filteredMatches = append(filteredMatches, toParam(mr))
+				break
+			}
+		}
+	}
+
+	return filteredMatches, nil
 }
 
 func matchIntersection(mr, mm []*labels.Matcher) bool {

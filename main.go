@@ -104,9 +104,9 @@ func main() {
 	if Cfg.Server.Authentication {
 		r.Use(amp.CheckAuth)
 	}
-	r.Use(fmp.FilterMatches)
+	// r.Use(fmp.FilterMatches)
 
-	r.Handle("/federate", serveReverseProxy(Cfg.Server.Proxy)).Methods("GET")
+	r.Handle("/federate", fmp.FilterFederate(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
 	r.Handle("/api/v1/query", serveReverseProxy(Cfg.Server.Proxy)).Methods("GET")
 
 	if err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
