@@ -106,8 +106,10 @@ func main() {
 	}
 	// r.Use(fmp.FilterMatches)
 
-	r.Handle("/federate", fmp.FilterFederate(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
-	r.Handle("/api/v1/query", serveReverseProxy(Cfg.Server.Proxy)).Methods("GET")
+	r.Handle("/federate", fmp.FilterMatches(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+	r.Handle("/api/v1/series", fmp.FilterMatches(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+	r.Handle("/api/v1/query", fmp.FilterQuery(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+	r.Handle("/api/v1/query_range", fmp.FilterQuery(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
 
 	if err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
 		methods, err := route.GetMethods()

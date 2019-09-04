@@ -74,8 +74,8 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	return nil
 }
 
-// FilterFederate main function
-func (fm *Manager) FilterFederate(h http.Handler) http.Handler {
+// FilterMatches filter match[] parameter
+func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		rID := r.Header.Get(fm.idHeaderName)
@@ -105,6 +105,43 @@ func (fm *Manager) FilterFederate(h http.Handler) http.Handler {
 		r.Form.Del("match[]")
 		for _, i := range filteredMatches {
 			r.Form.Add("match[]", i)
+		}
+
+		h.ServeHTTP(w, r)
+	})
+}
+
+// FilterQuery filter query parameter
+func (fm *Manager) FilterQuery(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		rID := r.Header.Get(fm.idHeaderName)
+		if rID == "" {
+			http.Error(w, fmt.Sprintf("ERROR: Empty header %v", fm.idHeaderName), http.StatusBadRequest)
+			level.Warn(fm.logger).Log("msg", "empty header in filter request", "value", fm.idHeaderName)
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, fmt.Sprintf("ERROR: error parsing form values: %v", err), http.StatusBadRequest)
+			level.Warn(fm.logger).Log("msg", "cannot parse form values", "id", rID, "err", err)
+			return
+		}
+
+		filteredMatches, err := fm.labelsParseAndFilter(r.Form["query"], rID)
+		if err != nil {
+			level.Warn(fm.logger).Log("msg", "cannot parse query", "id", rID, "err", err)
+		}
+
+		if len(filteredMatches) == 0 {
+			http.Error(w, fmt.Sprintf("Wrong query. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
+			level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
+			return
+		}
+		// clean and fill form
+		r.Form.Del("query")
+		for _, i := range filteredMatches {
+			r.Form.Add("query", i)
 		}
 
 		h.ServeHTTP(w, r)
