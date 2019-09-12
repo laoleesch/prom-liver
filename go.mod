@@ -10,7 +10,7 @@ require (
 	github.com/opentracing/opentracing-go v1.1.0 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.1.0 // indirect
-	github.com/prometheus/prometheus v2.5.0+incompatible
+	github.com/prometheus/prometheus v2.7.0+incompatible	
 	github.com/prometheus/tsdb v0.10.0 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.2.2
