@@ -93,12 +93,6 @@ func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 func (am *Manager) basicAuthInMem(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		// const prefix = "Basic "
-		// if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
-		// 	http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-		// 	level.Debug(am.logger).Log("msg", "Incorrect Authorization header Basic value")
-		// 	return
-		// }
 		if v, ok := am.authMemMap[TBasic][auth[6:]]; ok {
 			r.Header.Set(am.authHeaderName, v)
 			level.Debug(am.logger).Log("msg", "correct Basic auth", "id", v)
@@ -115,12 +109,6 @@ func (am *Manager) basicAuthInMem(h http.Handler) http.Handler {
 func (am *Manager) bearerAuthInMem(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		// const prefix = "Bearer "
-		// if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
-		// 	http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-		// 	level.Debug(am.logger).Log("msg", "Incorrect Authorization header Bearer token value")
-		// 	return
-		// }
 		if v, ok := am.authMemMap[TBearer][auth[7:]]; ok {
 			r.Header.Set(am.authHeaderName, v)
 			level.Debug(am.logger).Log("msg", "correct Bearer auth", "id", v)

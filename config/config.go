@@ -40,14 +40,14 @@ type Config struct {
 
 // ServerConfig includes only "server:" three
 type ServerConfig struct {
-	Port string `yaml:"port,omitempty"`
+	Port       string `yaml:"port,omitempty"`
+	Proxy      string `yaml:"proxy,omitempty"`
+	HeaderName string `yaml:"id-header,omitempty"`
 	// URI            string `yaml:"uri,omitempty"`
 	// URIPrefix      string `yaml:"uri-prefix,omitempty"`
-	Api            bool   `yaml:"api-enable,omitempty"`
-	Federate       bool   `yaml:"federate-enable,omitempty"`
-	Proxy          string `yaml:"proxy,omitempty"`
-	Authentication bool   `yaml:"authentication,omitempty"`
-	HeaderName     string `yaml:"id-header,omitempty"`
+	Api            bool `yaml:"api-enable,omitempty"`
+	Federate       bool `yaml:"federate-enable,omitempty"`
+	Authentication bool `yaml:"authentication,omitempty"`
 }
 
 //Client includes configuration for each client

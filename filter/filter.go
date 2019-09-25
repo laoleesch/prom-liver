@@ -155,7 +155,7 @@ func matchIntersection(mr, mm []*labels.Matcher) bool {
 	for _, mri := range mr {
 		for _, mmi := range mm {
 			if suitMatchers(mri, mmi) {
-				count = count + 1
+				count++
 			}
 			if count == len(mm) {
 				return true

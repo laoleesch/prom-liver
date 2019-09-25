@@ -90,10 +90,10 @@ func main() {
 
 		for {
 			<-hup
-			if err := reloadConfig(cmdConfigFile, &logger, amp, fmp); err != nil {
+			if err := reloadConfig(cmdConfigFile, amp, fmp); err != nil {
 				level.Error(logger).Log("msg", "Error reloading config", "err", err)
 			} else {
-				level.Info(logger).Log("msg", "Config has been successfuly reloaded", "file", cmdConfigFile)
+				level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", cmdConfigFile)
 			}
 		}
 	}()
@@ -117,6 +117,9 @@ func main() {
 
 	if err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
 		methods, err := route.GetMethods()
+		if err != nil {
+			return err
+		}
 		pathTemplate, err := route.GetPathTemplate()
 		if err != nil {
 			return err
@@ -156,7 +159,6 @@ func initLogger(s string) kitlog.Logger {
 		logger = level.NewFilter(logger, level.AllowError())
 	default:
 		level.Error(logger).Log("msg", "wrong log level name", "value", cmdLogLevel)
-		cmdLogLevel = "info"
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}
 	return logger
@@ -186,7 +188,7 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 			for _, b := range c.Auth.Basic.Base64 {
 				//TODO: maybe there needs to decode base64 and check login, not whole encoded login-pass
 				if newid, ok := authMemMap[auth.TBasic][b]; ok {
-					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, string(newid))
+					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, newid)
 					return nil, err
 				}
 				authMemBasicMapClient[b] = string(id)
@@ -202,7 +204,7 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 		if len(c.Auth.Bearer.Tokens) > 0 {
 			for _, t := range c.Auth.Bearer.Tokens {
 				if newid, ok := authMemMap[auth.TBearer][t]; ok {
-					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, string(newid))
+					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, newid)
 					return nil, err
 				}
 				authMemBearerMapClient[t] = string(id)
@@ -237,7 +239,7 @@ func configureFilter(cfg *config.Config) (*filter.Manager, error) {
 	return newFilter, nil
 }
 
-func reloadConfig(filename string, l *kitlog.Logger, am *auth.Manager, fm *filter.Manager) error {
+func reloadConfig(filename string, am *auth.Manager, fm *filter.Manager) error {
 	cfg, err := config.LoadConfig(filename, &logger)
 	if err != nil {
 		return err
@@ -252,15 +254,20 @@ func reloadConfig(filename string, l *kitlog.Logger, am *auth.Manager, fm *filte
 		}
 	}
 
-	newFmp := filter.NewManager(&logger)
-	newFmp, err = configureFilter(&cfg)
+	newFmp, err := configureFilter(&cfg)
 	if err != nil {
 		level.Error(logger).Log("msg", "cannot init new filter config", "err", err)
 		return err
 	}
 
-	am.CopyConfig(newAmp)
-	fm.CopyConfig(newFmp)
+	err = am.CopyConfig(newAmp)
+	if err != nil {
+		return err
+	}
+	err = fm.CopyConfig(newFmp)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
