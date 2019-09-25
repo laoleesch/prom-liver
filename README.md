@@ -9,8 +9,6 @@ Auth filter for prometheus:
 
 ## USAGE
 You can build it or use docker image
-#### laoleesch/prom-liver:latest
-
 ```
 $ ./prom-liver -h
 usage: prom-liver [<flags>]
@@ -24,8 +22,18 @@ Flags:
 ```
 also please look at example/config.yaml
 
+You can reload config trough SIGHUP like:
+```
+$ skill -s SIGHUP prom-liver
+```
+
+#### laoleesch/prom-liver:latest
+```
+docker run -d -p 8080:8080 -v /<PATH>/prom-liver-config:/prom-liver laoleesch/prom-liver:latest
+```
+
 ## TODO:
 
 - [ ] /healthz
 - [ ] vault integration (?)
-- [ ] 
+- [ ] init config relaoding throug HTTP request like prometheus
