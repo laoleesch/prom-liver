@@ -7,7 +7,7 @@ RUN cd /src && \
     chmod a+x prom-liver
 
 FROM golang:alpine
-WORKDIR /app
-COPY --from=build-env /src/prom-liver /app/
+WORKDIR /prom-liver
+COPY --from=build-env /src/prom-liver /usr/bin/
 EXPOSE 8080/tcp
-ENTRYPOINT [ "/app/prom-liver" ]
+ENTRYPOINT [ "/usr/bin/prom-liver" ]
