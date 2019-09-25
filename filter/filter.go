@@ -11,18 +11,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-// matcherSet is a union of match[]
-type matcherSet [][]*labels.Matcher
-
-// doesn't work. I'm stupid :(
-func (ms *matcherSet) String() string {
-	return fmt.Sprintf("%v", [][]*labels.Matcher(*ms))
-}
-
 // Manager describe one filter map (client id: filters)
 type Manager struct {
 	idHeaderName string
-	matchMemMap  map[string]matcherSet
+	matchMemMap  map[string][][]*labels.Matcher
 	logger       kitlog.Logger
 	mtx          sync.RWMutex
 }
@@ -31,7 +23,7 @@ type Manager struct {
 func NewManager(l *kitlog.Logger) *Manager {
 	fm := &Manager{
 		idHeaderName: "",
-		matchMemMap:  make(map[string]matcherSet),
+		matchMemMap:  make(map[string][][]*labels.Matcher),
 		logger:       *l,
 	}
 	return fm
@@ -42,7 +34,7 @@ func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
-	matchMemMap := make(map[string]matcherSet)
+	matchMemMap := make(map[string][][]*labels.Matcher)
 	var matcherSets [][]*labels.Matcher
 
 	for id, matches := range matchMap {
@@ -74,45 +66,8 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	return nil
 }
 
-// FilterMatches filter match[] parameter
-func (fm *Manager) FilterMatches(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		rID := r.Header.Get(fm.idHeaderName)
-		if rID == "" {
-			http.Error(w, fmt.Sprintf("ERROR: Empty header %v", fm.idHeaderName), http.StatusBadRequest)
-			level.Warn(fm.logger).Log("msg", "empty header in filter request", "value", fm.idHeaderName)
-			return
-		}
-
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, fmt.Sprintf("ERROR: error parsing form values: %v", err), http.StatusBadRequest)
-			level.Warn(fm.logger).Log("msg", "cannot parse form values", "id", rID, "err", err)
-			return
-		}
-
-		filteredMatches, err := fm.labelsParseAndFilter(r.Form["match[]"], rID)
-		if err != nil {
-			level.Warn(fm.logger).Log("msg", "cannot parse match[] sets", "id", rID, "err", err)
-		}
-
-		if len(filteredMatches) == 0 {
-			http.Error(w, fmt.Sprintf("Wrong matches. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
-			level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
-			return
-		}
-		// clean and fill form
-		r.Form.Del("match[]")
-		for _, i := range filteredMatches {
-			r.Form.Add("match[]", i)
-		}
-
-		h.ServeHTTP(w, r)
-	})
-}
-
 // FilterQuery filter query parameter
-func (fm *Manager) FilterQuery(h http.Handler) http.Handler {
+func (fm *Manager) FilterQuery(parameter string, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		rID := r.Header.Get(fm.idHeaderName)
@@ -128,54 +83,75 @@ func (fm *Manager) FilterQuery(h http.Handler) http.Handler {
 			return
 		}
 
-		filteredMatches, err := fm.labelsParseAndFilter(r.Form["query"], rID)
+		filteredQuery, err := fm.labelsParseAndFilter(r.Form[parameter], rID)
 		if err != nil {
 			level.Warn(fm.logger).Log("msg", "cannot parse query", "id", rID, "err", err)
 		}
 
-		if len(filteredMatches) == 0 {
+		if len(filteredQuery) == 0 {
 			http.Error(w, fmt.Sprintf("Wrong query. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
 			level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
 			return
 		}
 		// clean and fill form
-		r.Form.Del("query")
-		for _, i := range filteredMatches {
-			r.Form.Add("query", i)
+		r.Form.Del(parameter)
+		for _, i := range filteredQuery {
+			r.Form.Add(parameter, i)
 		}
 
 		h.ServeHTTP(w, r)
 	})
 }
 
-func (fm *Manager) labelsParseAndFilter(matches []string, rID string) ([]string, error) {
-	var rMatcherSets [][]*labels.Matcher
-	filteredMatches := make([]string, 0)
-	level.Debug(fm.logger).Log("msg", "request matches sets", "id", rID, "value", fmt.Sprintf("%v", matches))
-	for _, s := range matches {
-		matchers, err := promql.ParseMetricSelector(s)
+func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string, error) {
+	filteredQueries := make([]string, 0)
+	level.Debug(fm.logger).Log("msg", "request matches sets", "id", rID, "value", fmt.Sprintf("%v", queries))
+	for _, s := range queries {
+		expr, err := promql.ParseExpr(s)
 		if err != nil {
-			return filteredMatches, err
+			return filteredQueries, err
 		}
-		rMatcherSets = append(rMatcherSets, matchers)
+		if err = promql.Walk(inspector(checkLabels(fm.matchMemMap[rID])), expr, nil); err == nil {
+			s = expr.String()
+			filteredQueries = append(filteredQueries, s)
+		}
 	}
+	return filteredQueries, nil
+}
 
-	// compare matcherSets with white list
-	for _, mr := range rMatcherSets {
-		for _, mm := range fm.matchMemMap[rID] {
-			if matchIntersection(mr, mm) {
-				filteredMatches = append(filteredMatches, toParam(mr))
-				break
+type inspector func(promql.Node, []promql.Node) error
+
+func (f inspector) Visit(node promql.Node, path []promql.Node) (promql.Visitor, error) {
+	if err := f(node, path); err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+func checkLabels(matchMemSet [][]*labels.Matcher) func(node promql.Node, path []promql.Node) error {
+	return func(node promql.Node, path []promql.Node) error {
+		switch n := node.(type) {
+		case *promql.VectorSelector:
+			for _, mm := range matchMemSet {
+				if matchIntersection(n.LabelMatchers, mm) {
+					return nil
+				}
 			}
+			return fmt.Errorf("Not match %v", matchMemSet)
+		case *promql.MatrixSelector:
+			for _, mm := range matchMemSet {
+				if matchIntersection(n.LabelMatchers, mm) {
+					return nil
+				}
+			}
+			return fmt.Errorf("Not match %v", matchMemSet)
 		}
+		return nil
 	}
-
-	return filteredMatches, nil
 }
 
 func matchIntersection(mr, mm []*labels.Matcher) bool {
 	count := 0
-
 	for _, mri := range mr {
 		for _, mmi := range mm {
 			if suitMatchers(mri, mmi) {
@@ -209,12 +185,4 @@ func suitMatchers(mri, mmi *labels.Matcher) bool {
 			mri.Type == mmi.Type &&
 			mri.Value == mmi.Value
 	}
-}
-
-func toParam(mr []*labels.Matcher) string {
-	str := "{"
-	for _, mri := range mr {
-		str = str + mri.String() + ","
-	}
-	return str + "}"
 }

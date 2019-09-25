@@ -37,7 +37,7 @@ var (
 
 func main() {
 
-	c := kingpin.New(filepath.Base(os.Args[0]), "Auth-filter-reverse-proxy-server for Prometheus federate")
+	c := kingpin.New(filepath.Base(os.Args[0]), "Auth-filter-reverse-proxy-server for Prometheus")
 	c.HelpFlag.Short('h')
 	c.Flag("loglevel", "Log level: debug, info, warning, error").Default("info").Short('l').StringVar(&cmdLogLevel)
 	c.Flag("config", "Configuration file").Short('c').Default("config.yaml").StringVar(&cmdConfigFile)
@@ -107,12 +107,12 @@ func main() {
 	// r.Use(fmp.FilterMatches)
 
 	if Cfg.Server.Api {
-		r.Handle("/api/v1/series", fmp.FilterMatches(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
-		r.Handle("/api/v1/query", fmp.FilterQuery(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
-		r.Handle("/api/v1/query_range", fmp.FilterQuery(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		r.Handle("/api/v1/series", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		r.Handle("/api/v1/query", fmp.FilterQuery("query", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		r.Handle("/api/v1/query_range", fmp.FilterQuery("query", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
 	}
 	if Cfg.Server.Federate {
-		r.Handle("/federate", fmp.FilterMatches(serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		r.Handle("/federate", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
 	}
 
 	if err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
@@ -270,28 +270,11 @@ func serveReverseProxy(target string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		url, _ := url.Parse(target)
 		proxy := httputil.NewSingleHostReverseProxy(url)
-
-		// proxy.ErrorLog = logger
-
 		r.URL.Host = url.Host
 		r.URL.Scheme = url.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = url.Host
 		r.RequestURI = url.EscapedPath() + r.RequestURI
-
-		if cmdLogLevel == "debug" {
-			level.Debug(logger).Log("msg", "out request", "dump", requestDump(r))
-		}
-
 		proxy.ServeHTTP(w, r)
 	})
-}
-
-// for debug :)
-func requestDump(r *http.Request) []byte {
-	requestDump, err := httputil.DumpRequest(r, true)
-	if err != nil {
-		level.Debug(logger).Log("msg", "cannot make a request dump", "err", err)
-	}
-	return requestDump
 }
