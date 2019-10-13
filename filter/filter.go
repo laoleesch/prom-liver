@@ -137,14 +137,14 @@ func checkLabels(matchMemSet [][]*labels.Matcher) func(node promql.Node, path []
 					return nil
 				}
 			}
-			return fmt.Errorf("Not match %v", matchMemSet)
+			return fmt.Errorf("not match %v", matchMemSet)
 		case *promql.MatrixSelector:
 			for _, mm := range matchMemSet {
 				if matchIntersection(n.LabelMatchers, mm) {
 					return nil
 				}
 			}
-			return fmt.Errorf("Not match %v", matchMemSet)
+			return fmt.Errorf("not match %v", matchMemSet)
 		}
 		return nil
 	}

@@ -173,7 +173,7 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 			level.Debug(*l).Log("msg", "read file", "file", file)
 			for id, conf := range clients {
 				if _, ok := newCfg.Clients[id]; ok {
-					err = fmt.Errorf("Duplicate client ID from files: ID=%v, file=%v", id, file)
+					err = fmt.Errorf("duplicate client ID from files: ID=%v, file=%v", id, file)
 					return newCfg, err
 				}
 				newCfg.Clients[id] = conf
@@ -184,7 +184,7 @@ func LoadConfig(configFile string, l *kitlog.Logger) (Config, error) {
 
 	//check empty clients set :)
 	if len(newCfg.Clients) == 0 {
-		return newCfg, fmt.Errorf("The set of clients is empty. Are you sure?")
+		return newCfg, fmt.Errorf("the set of clients is empty. Are you sure?")
 	}
 
 	//read credentials from files and etc
