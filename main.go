@@ -282,6 +282,7 @@ func serveReverseProxy(target string) http.Handler {
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = url.Host
 		r.RequestURI = url.EscapedPath() + r.RequestURI
+		level.Debug(logger).Log("send form", fmt.Sprintf("%v", r.Form))
 		proxy.ServeHTTP(w, r)
 	})
 }
