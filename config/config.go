@@ -28,6 +28,8 @@ var (
 		Proxy:          "http://localhost:9090/",
 		Authentication: true,
 		HeaderName:     "X-Prom-Liver-Id",
+		AdminApi:       true,
+		AdminPort:      "8888",
 	}
 )
 
@@ -48,6 +50,9 @@ type ServerConfig struct {
 	Api            bool `yaml:"api-enable,omitempty"`
 	Federate       bool `yaml:"federate-enable,omitempty"`
 	Authentication bool `yaml:"authentication,omitempty"`
+
+	AdminApi  bool   `yaml:"admin-api-enable,omitempty"`
+	AdminPort string `yaml:"admin-port,omitempty"`
 }
 
 //Client includes configuration for each client

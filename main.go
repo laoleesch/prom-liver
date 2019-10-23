@@ -4,6 +4,7 @@ import (
 
 	// _ "net/http/pprof"
 
+	"context"
 	"fmt"
 	stdlog "log"
 	"net/http"
@@ -33,6 +34,9 @@ var (
 	// cmd args
 	cmdConfigFile string
 	cmdLogLevel   string
+
+	// reload config channel
+	chHTTPReload chan chan error
 )
 
 func main() {
@@ -87,13 +91,26 @@ func main() {
 	go func() {
 		hup := make(chan os.Signal, 1)
 		signal.Notify(hup, syscall.SIGHUP)
+		chHTTPReload = make(chan chan error)
 
 		for {
-			<-hup
-			if err := reloadConfig(cmdConfigFile, amp, fmp); err != nil {
-				level.Error(logger).Log("msg", "Error reloading config", "err", err)
-			} else {
-				level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", cmdConfigFile)
+			select {
+			case <-hup:
+				level.Info(logger).Log("msg", "got SIGHUP signal")
+				if err := reloadConfig(cmdConfigFile, amp, fmp); err != nil {
+					level.Error(logger).Log("msg", "Error reloading config", "err", err)
+				} else {
+					level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", cmdConfigFile)
+				}
+			case rc := <-chHTTPReload:
+				level.Info(logger).Log("msg", "got http config reload signal")
+				if err := reloadConfig(cmdConfigFile, amp, fmp); err != nil {
+					level.Error(logger).Log("msg", "Error reloading config", "err", err)
+					rc <- err
+				} else {
+					level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", cmdConfigFile)
+					rc <- nil
+				}
 			}
 		}
 	}()
@@ -137,10 +154,40 @@ func main() {
 		ReadTimeout:  15 * time.Second,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
-		level.Error(logger).Log("msg", "cannot start http listener", "err", err)
-		os.Exit(2)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			level.Error(logger).Log("msg", "main http listener error", "err", err)
+			os.Exit(2)
+		}
+	}()
+
+	if Cfg.Server.AdminApi {
+		ra := mux.NewRouter()
+		ra.Handle("/admin/config/reload", reloadConfigHandler()).Methods("POST", "PUT")
+		level.Info(logger).Log("server.uri", "/admin/config/reload", "server.uri.methods", "POST, PUT")
+		srvadmin := &http.Server{
+			Handler:      ra,
+			Addr:         ":" + Cfg.Server.AdminPort,
+			WriteTimeout: 15 * time.Second,
+			ReadTimeout:  15 * time.Second,
+		}
+		go func() {
+			if err := srvadmin.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				level.Error(logger).Log("msg", "listener admin http error", "err", err)
+			}
+		}()
 	}
+
+	chStop := make(chan os.Signal, 1)
+	signal.Notify(chStop, os.Interrupt, syscall.SIGTERM)
+
+	signal := <-chStop
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	srv.Shutdown(ctx)
+	level.Info(logger).Log("msg", "server has been shutted down", "signal", signal)
+	os.Exit(0)
+
 }
 
 func initLogger(s string) kitlog.Logger {
@@ -188,7 +235,7 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 			for _, b := range c.Auth.Basic.Base64 {
 				//TODO: maybe there needs to decode base64 and check login, not whole encoded login-pass
 				if newid, ok := authMemMap[auth.TBasic][b]; ok {
-					err = fmt.Errorf("Duplicate basic base64 value: current ID=%v, new ID=%v", id, newid)
+					err = fmt.Errorf("duplicate basic base64 value: current ID=%v, new ID=%v", id, newid)
 					return nil, err
 				}
 				authMemBasicMapClient[b] = string(id)
@@ -204,7 +251,7 @@ func configureAuth(cfg *config.Config) (*auth.Manager, error) {
 		if len(c.Auth.Bearer.Tokens) > 0 {
 			for _, t := range c.Auth.Bearer.Tokens {
 				if newid, ok := authMemMap[auth.TBearer][t]; ok {
-					err = fmt.Errorf("Duplicate bearer token value: current ID=%v, new ID=%v", id, newid)
+					err = fmt.Errorf("duplicate bearer token value: current ID=%v, new ID=%v", id, newid)
 					return nil, err
 				}
 				authMemBearerMapClient[t] = string(id)
@@ -284,5 +331,18 @@ func serveReverseProxy(target string) http.Handler {
 		r.RequestURI = url.EscapedPath() + r.RequestURI
 		level.Debug(logger).Log("send form", fmt.Sprintf("%v", r.Form))
 		proxy.ServeHTTP(w, r)
+	})
+}
+
+func reloadConfigHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		level.Debug(logger).Log("msg", "got reload config request")
+		rc := make(chan error)
+		chHTTPReload <- rc
+		if err := <-rc; err != nil {
+			http.Error(w, fmt.Sprintf("failed to reload config: %s\n", err), http.StatusInternalServerError)
+		} else {
+			fmt.Fprintf(w, "config has been successfully reloaded\n")
+		}
 	})
 }
