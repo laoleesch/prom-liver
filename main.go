@@ -164,7 +164,8 @@ func main() {
 	if Cfg.Server.AdminApi {
 		ra := mux.NewRouter()
 		ra.Handle("/admin/config/reload", reloadConfigHandler()).Methods("POST", "PUT")
-		level.Info(logger).Log("server.uri", "/admin/config/reload", "server.uri.methods", "POST, PUT")
+		level.Info(logger).Log("admin.port", Cfg.Server.AdminPort)
+		level.Info(logger).Log("admin.uri", "/admin/config/reload", "admin.uri.methods", "POST,PUT")
 		srvadmin := &http.Server{
 			Handler:      ra,
 			Addr:         ":" + Cfg.Server.AdminPort,
