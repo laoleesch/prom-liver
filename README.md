@@ -8,8 +8,10 @@ Auth filter for prometheus:
 - /federate
 
 ## USAGE
+
 You can build it or use docker image
-```
+
+```bash
 $ ./prom-liver -h
 usage: prom-liver [<flags>]
 
@@ -20,19 +22,22 @@ Flags:
   -l, --loglevel="info"       Log level: debug, info, warning, error
   -c, --config="config.yaml"  Configuration file
 ```
+
 also please look at example/config.yaml
 
 You can reload config trough SIGHUP like:
-```
-$ skill -s SIGHUP prom-liver
+
+```bash
+skill -s SIGHUP prom-liver
 ```
 
-#### laoleesch/prom-liver:latest
-```
+### laoleesch/prom-liver:latest
+
+```bash
 docker run -d -p 8080:8080 -v /<PATH>/prom-liver-config:/prom-liver laoleesch/prom-liver:latest
 ```
 
-## TODO:
+## TODO
 
 - [ ] /healthz
 - [ ] vault integration (?)

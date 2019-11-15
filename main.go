@@ -121,30 +121,17 @@ func main() {
 	if Cfg.Server.Authentication {
 		r.Use(amp.CheckAuth)
 	}
-	// r.Use(fmp.FilterMatches)
 
-	if Cfg.Server.Api {
+	if Cfg.Server.API {
 		r.Handle("/api/v1/series", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		level.Info(logger).Log("server.uri", "/api/v1/series", "server.uri.methods", "GET")
 		r.Handle("/api/v1/query", fmp.FilterQuery("query", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		level.Info(logger).Log("server.uri", "/api/v1/query", "server.uri.methods", "GET")
 		r.Handle("/api/v1/query_range", fmp.FilterQuery("query", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		level.Info(logger).Log("server.uri", "/api/v1/query_range", "server.uri.methods", "GET")
 	}
 	if Cfg.Server.Federate {
 		r.Handle("/federate", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
-	}
-
-	if err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
-		methods, err := route.GetMethods()
-		if err != nil {
-			return err
-		}
-		pathTemplate, err := route.GetPathTemplate()
-		if err != nil {
-			return err
-		}
-		level.Info(logger).Log("server.uri", pathTemplate, "server.uri.methods", fmt.Sprint(methods))
-		return nil
-	}); err != nil {
-		level.Error(logger).Log("msg", "Error while getting all routes", "err", err)
 	}
 
 	srv := &http.Server{
@@ -161,7 +148,7 @@ func main() {
 		}
 	}()
 
-	if Cfg.Server.AdminApi {
+	if Cfg.Server.AdminAPI {
 		ra := mux.NewRouter()
 		ra.Handle("/admin/config/reload", reloadConfigHandler()).Methods("POST", "PUT")
 		level.Info(logger).Log("admin.port", Cfg.Server.AdminPort)
@@ -185,7 +172,9 @@ func main() {
 	signal := <-chStop
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	if err = srv.Shutdown(ctx); err != nil {
+		level.Error(logger).Log("msg", "error during server shutdown", "err", err)
+	}
 	level.Info(logger).Log("msg", "server has been shutted down", "signal", signal)
 	os.Exit(0)
 
