@@ -23,9 +23,9 @@ import (
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
-	auth "github.com/laoleesch/prom-liver/auth"
-	config "github.com/laoleesch/prom-liver/config"
-	filter "github.com/laoleesch/prom-liver/filter"
+	auth "github.com/laoleesch/prom-liver/pkg/auth"
+	config "github.com/laoleesch/prom-liver/pkg/config"
+	filter "github.com/laoleesch/prom-liver/pkg/filter"
 )
 
 var (
@@ -37,6 +37,11 @@ var (
 
 	// reload config channel
 	chHTTPReload chan chan error
+
+	// managers
+	cmp *config.ConfigManager
+	amp *auth.Manager
+	fmp *filter.Manager
 )
 
 func main() {
@@ -58,8 +63,12 @@ func main() {
 	level.Info(logger).Log("configfile", cmdConfigFile)
 
 	// Load config file
-	Cfg := config.DefaultConfig
-	Cfg, err = config.LoadConfig(cmdConfigFile, &logger)
+	cmp, err := config.New(cmdConfigFile, &logger)
+	if err != nil {
+		level.Error(logger).Log("msg", "Error init ConfigManager", "err", err)
+		os.Exit(2)
+	}
+	Cfg, err := cmp.LoadConfig()
 	if err != nil {
 		level.Error(logger).Log("msg", "Error load config", "err", err)
 		os.Exit(2)
@@ -71,7 +80,7 @@ func main() {
 	level.Info(logger).Log("server.id-header", Cfg.Server.HeaderName)
 
 	// apply config to managers
-	amp := auth.NewManager(&logger)
+	// amp := auth.NewManager(&logger)
 	if Cfg.Server.Authentication {
 		amp, err = configureAuth(&Cfg)
 		if err != nil {
@@ -80,7 +89,7 @@ func main() {
 		}
 	}
 
-	fmp := filter.NewManager(&logger)
+	// fmp := filter.NewManager(&logger)
 	fmp, err = configureFilter(&Cfg)
 	if err != nil {
 		level.Error(logger).Log("msg", "cannot init filter config", "err", err)
@@ -97,14 +106,14 @@ func main() {
 			select {
 			case <-hup:
 				level.Info(logger).Log("msg", "got SIGHUP signal")
-				if err := reloadConfig(cmdConfigFile, amp, fmp); err != nil {
+				if err := reloadConfig(); err != nil {
 					level.Error(logger).Log("msg", "Error reloading config", "err", err)
 				} else {
 					level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", cmdConfigFile)
 				}
 			case rc := <-chHTTPReload:
 				level.Info(logger).Log("msg", "got http config reload signal")
-				if err := reloadConfig(cmdConfigFile, amp, fmp); err != nil {
+				if err := reloadConfig(); err != nil {
 					level.Error(logger).Log("msg", "Error reloading config", "err", err)
 					rc <- err
 				} else {
@@ -276,8 +285,8 @@ func configureFilter(cfg *config.Config) (*filter.Manager, error) {
 	return newFilter, nil
 }
 
-func reloadConfig(filename string, am *auth.Manager, fm *filter.Manager) error {
-	cfg, err := config.LoadConfig(filename, &logger)
+func reloadConfig() error {
+	cfg, err := cmp.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -297,11 +306,11 @@ func reloadConfig(filename string, am *auth.Manager, fm *filter.Manager) error {
 		return err
 	}
 
-	err = am.CopyConfig(newAmp)
+	err = amp.CopyConfig(newAmp)
 	if err != nil {
 		return err
 	}
-	err = fm.CopyConfig(newFmp)
+	err = fmp.CopyConfig(newFmp)
 	if err != nil {
 		return err
 	}
