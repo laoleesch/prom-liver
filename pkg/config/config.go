@@ -136,6 +136,7 @@ func (cm *ConfigManager) LoadConfig() (Config, error) {
 
 func (cm *ConfigManager) loadConfigFile() (Config, error) {
 	newCfg := DefaultConfig
+	level.Debug(cm.logger).Log("msg", "read file", "file", cm.configFile)
 	file, err := ioutil.ReadFile(cm.configFile)
 	if err != nil {
 		return newCfg, errors.Wrapf(err, "cannot read config file")
@@ -196,6 +197,7 @@ func (cm *ConfigManager) loadCredsFiles(newCfg Config) (Config, error) {
 	for id, clientConfig := range newCfg.Clients {
 		// read base64 files and copy to []Base64
 		if len(clientConfig.Auth.Basic.Files) > 0 {
+			level.Debug(cm.logger).Log("msg", "try to find base64 creds files", "patterns", fmt.Sprint(clientConfig.Auth.Basic.Files))
 			base64, err := cm.readCredsFiles(clientConfig.Auth.Basic.Files)
 			if err != nil {
 				return newCfg, err
@@ -204,6 +206,7 @@ func (cm *ConfigManager) loadCredsFiles(newCfg Config) (Config, error) {
 		}
 		// read tokens files and copy to []Tokens
 		if len(clientConfig.Auth.Bearer.Files) > 0 {
+			level.Debug(cm.logger).Log("msg", "try to find bearer creds files", "patterns", fmt.Sprint(clientConfig.Auth.Bearer.Files))
 			tokens, err := cm.readCredsFiles(clientConfig.Auth.Bearer.Files)
 			if err != nil {
 				return newCfg, err
@@ -221,8 +224,9 @@ func (cm *ConfigManager) readCredsFiles(patFiles []string) ([]string, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "error finding creds files")
 	}
-	level.Debug(cm.logger).Log("msg", "found base64 credentials files", "files", fmt.Sprint(files))
+	level.Debug(cm.logger).Log("msg", "found credentials files", "files", fmt.Sprint(files))
 	for _, f := range files {
+		level.Debug(cm.logger).Log("msg", "read file", "file", f)
 		content, err := ioutil.ReadFile(f)
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot read file")

@@ -9,7 +9,12 @@ Auth filter for prometheus:
 
 ## USAGE
 
-You can build it or use docker image
+You can build it or use docker image laoleesch/prom-liver:latest
+
+```bash
+docker run -d -p 8080:8080 -v /<PATH>/prom-liver-config:/prom-liver laoleesch/prom-liver:latest
+```
+
 
 ```bash
 $ ./prom-liver -h
@@ -28,17 +33,15 @@ also please look at example/config.yaml
 You can reload config trough SIGHUP like:
 
 ```bash
-skill -s SIGHUP prom-liver
+skill -SIGHUP prom-liver
 ```
-
-### laoleesch/prom-liver:latest
+or send PUT/POST on admin api port
 
 ```bash
-docker run -d -p 8080:8080 -v /<PATH>/prom-liver-config:/prom-liver laoleesch/prom-liver:latest
+curl -X POST http://localhost:8888/admin/config/reload
 ```
 
 ## TODO
 
 - [ ] /healthz
-- [ ] vault integration (?)
-- [ ] init config relaoding throug HTTP request like prometheus
+- [ ] vault integration (? maybe just example with consul-template)
