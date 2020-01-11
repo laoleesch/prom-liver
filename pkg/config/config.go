@@ -19,9 +19,7 @@ var (
 
 	// DefaultServerConfig is the default global configuration.
 	DefaultServerConfig = ServerConfig{
-		Port: "8080",
-		// URI:            "/federate",
-		// URIPrefix:      "",
+		Port:           "8080",
 		API:            true,
 		Federate:       true,
 		Proxy:          "http://localhost:9090/",
@@ -41,14 +39,12 @@ type Config struct {
 
 // ServerConfig includes only "server:" three
 type ServerConfig struct {
-	Port       string `yaml:"port,omitempty"`
-	Proxy      string `yaml:"proxy,omitempty"`
-	HeaderName string `yaml:"id-header,omitempty"`
-	// URI            string `yaml:"uri,omitempty"`
-	// URIPrefix      string `yaml:"uri-prefix,omitempty"`
-	API            bool `yaml:"api-enable,omitempty"`
-	Federate       bool `yaml:"federate-enable,omitempty"`
-	Authentication bool `yaml:"authentication,omitempty"`
+	Port           string `yaml:"port,omitempty"`
+	Proxy          string `yaml:"proxy,omitempty"`
+	HeaderName     string `yaml:"id-header,omitempty"`
+	API            bool   `yaml:"api-enable,omitempty"`
+	Federate       bool   `yaml:"federate-enable,omitempty"`
+	Authentication bool   `yaml:"authentication,omitempty"`
 
 	AdminAPI  bool   `yaml:"admin-api-enable,omitempty"`
 	AdminPort string `yaml:"admin-port,omitempty"`
@@ -109,8 +105,8 @@ func New(cf string, l *kitlog.Logger) (*ConfigManager, error) {
 }
 
 // LoadConfig returns Config after it reads and parse all config files
-func (cm *ConfigManager) LoadConfig() (Config, error) {
-	newCfg, err := cm.loadConfigFile()
+func (cm *ConfigManager) LoadConfig() (newCfg Config, err error) {
+	newCfg, err = cm.loadConfigFile()
 	if err != nil {
 		return newCfg, errors.Wrapf(err, "cannot load config file ")
 	}
@@ -131,11 +127,11 @@ func (cm *ConfigManager) LoadConfig() (Config, error) {
 		return newCfg, errors.Wrapf(err, "cannot load credentials files ")
 	}
 
-	return newCfg, nil
+	return
 }
 
-func (cm *ConfigManager) loadConfigFile() (Config, error) {
-	newCfg := DefaultConfig
+func (cm *ConfigManager) loadConfigFile() (newCfg Config, err error) {
+	newCfg = DefaultConfig
 	level.Debug(cm.logger).Log("msg", "read file", "file", cm.configFile)
 	file, err := ioutil.ReadFile(cm.configFile)
 	if err != nil {
@@ -146,7 +142,7 @@ func (cm *ConfigManager) loadConfigFile() (Config, error) {
 		return newCfg, errors.Wrapf(err, "cannot parse config file")
 	}
 
-	return newCfg, nil
+	return
 }
 
 func findFiles(patFiles []string) (files []string, err error) {
