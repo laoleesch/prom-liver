@@ -12,7 +12,7 @@ server:
   admin-port: 8888                #default 8888
 
 clients_files:
-  - "examples/client*"
+  - "configs/client*"
 
 clients:
   'go-metrics': 
@@ -23,7 +23,7 @@ clients:
       header: true
       bearer:
         files:
-          - "examples/secret_*"
+          - "configs/secret_*"
     match:
       - '{project=~"go-.*"}'
       - '{env="test"}'

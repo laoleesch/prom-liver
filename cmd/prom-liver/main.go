@@ -23,8 +23,8 @@ import (
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
+	config "github.com/laoleesch/prom-liver/internal/config"
 	auth "github.com/laoleesch/prom-liver/pkg/auth"
-	config "github.com/laoleesch/prom-liver/pkg/config"
 	filter "github.com/laoleesch/prom-liver/pkg/filter"
 )
 

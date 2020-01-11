@@ -44,4 +44,5 @@ curl -X POST http://localhost:8888/admin/config/reload
 ## TODO
 
 - [ ] /healthz
+- [ ] usage as auth middleware for nginx/traefik/etc
 - [ ] vault integration (? maybe just example with consul-template)
