@@ -3,7 +3,7 @@ ENV CGO_ENABLED=0
 ADD . /src
 RUN cd /src && \
     go get -d -v ./... && \
-    go build -o prom-liver && \
+    go build -o prom-liver cmd/prom-liver/main.go && \
     chmod a+x prom-liver
 
 FROM golang:alpine
