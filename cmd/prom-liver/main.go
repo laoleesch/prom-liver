@@ -35,6 +35,9 @@ var (
 	cmdConfigFile string
 	cmdLogLevel   string
 
+	// gloabal config
+	Cfg config.Config
+
 	// reload config channel
 	chHTTPReload chan chan error
 
@@ -62,13 +65,18 @@ func main() {
 	level.Info(logger).Log("loglevel", cmdLogLevel)
 	level.Info(logger).Log("configfile", cmdConfigFile)
 
-	// Load config file
-	cmp, err := config.New(cmdConfigFile, &logger)
+	// Init config
+	Cfg = config.DefaultConfig
+	amp = auth.NewManager(&logger)
+	fmp = filter.NewManager(&logger)
+
+	cmp, err = config.New(cmdConfigFile, &logger)
 	if err != nil {
 		level.Error(logger).Log("msg", "Error init ConfigManager", "err", err)
 		os.Exit(2)
 	}
-	Cfg, err := cmp.LoadConfig()
+
+	err = reloadConfig(cmp)
 	if err != nil {
 		level.Error(logger).Log("msg", "Error load config", "err", err)
 		os.Exit(2)
@@ -78,23 +86,6 @@ func main() {
 	level.Info(logger).Log("server.proxy", Cfg.Server.Proxy)
 	level.Info(logger).Log("server.authentication", Cfg.Server.Authentication)
 	level.Info(logger).Log("server.id-header", Cfg.Server.HeaderName)
-
-	// apply config to managers
-	// amp := auth.NewManager(&logger)
-	if Cfg.Server.Authentication {
-		amp, err = configureAuth(&Cfg)
-		if err != nil {
-			level.Error(logger).Log("msg", "cannot init auth config", "err", err)
-			os.Exit(2)
-		}
-	}
-
-	// fmp := filter.NewManager(&logger)
-	fmp, err = configureFilter(&Cfg)
-	if err != nil {
-		level.Error(logger).Log("msg", "cannot init filter config", "err", err)
-		os.Exit(2)
-	}
 
 	// config reload handler
 	go func() {
@@ -106,14 +97,14 @@ func main() {
 			select {
 			case <-hup:
 				level.Info(logger).Log("msg", "got SIGHUP signal")
-				if err := reloadConfig(); err != nil {
+				if err := reloadConfig(cmp); err != nil {
 					level.Error(logger).Log("msg", "Error reloading config", "err", err)
 				} else {
 					level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", cmdConfigFile)
 				}
 			case rc := <-chHTTPReload:
 				level.Info(logger).Log("msg", "got http config reload signal")
-				if err := reloadConfig(); err != nil {
+				if err := reloadConfig(cmp); err != nil {
 					level.Error(logger).Log("msg", "Error reloading config", "err", err)
 					rc <- err
 				} else {
@@ -210,109 +201,45 @@ func initLogger(s string) kitlog.Logger {
 	return logger
 }
 
-func configureAuth(cfg *config.Config) (*auth.Manager, error) {
-	authMemMap := make(map[int]map[string]string)
-	authMemMap[auth.THeader] = make(map[string]string)
-	authMemMap[auth.TBasic] = make(map[string]string)
-	authMemMap[auth.TBearer] = make(map[string]string)
-
-	var authMemBasicMapClient map[string]string
-	var authMemBearerMapClient map[string]string
-	var err error
-
-	level.Debug(logger).Log("msg", "prepearing auth config")
-
-	for id, c := range cfg.Clients {
-		// Header id set for Auth-enabled-cases
-		if c.Auth.Header {
-			authMemMap[auth.THeader][string(id)] = "true"
-			level.Debug(logger).Log("client.id", string(id), "auth", "header")
-		}
-		// Basic base64-id map
-		authMemBasicMapClient = make(map[string]string)
-		if len(c.Auth.Basic.Base64) > 0 {
-			for _, b := range c.Auth.Basic.Base64 {
-				//TODO: maybe there needs to decode base64 and check login, not whole encoded login-pass
-				if newid, ok := authMemMap[auth.TBasic][b]; ok {
-					err = fmt.Errorf("duplicate basic base64 value: current ID=%v, new ID=%v", id, newid)
-					return nil, err
-				}
-				authMemBasicMapClient[b] = string(id)
-			}
-			for b := range authMemBasicMapClient {
-				authMemMap[auth.TBasic][b] = authMemBasicMapClient[b]
-			}
-			level.Debug(logger).Log("client.id", string(id), "auth", "basic", "credentials", len(authMemBasicMapClient))
-		}
-
-		// Bearer token-id map
-		authMemBearerMapClient = make(map[string]string)
-		if len(c.Auth.Bearer.Tokens) > 0 {
-			for _, t := range c.Auth.Bearer.Tokens {
-				if newid, ok := authMemMap[auth.TBearer][t]; ok {
-					err = fmt.Errorf("duplicate bearer token value: current ID=%v, new ID=%v", id, newid)
-					return nil, err
-				}
-				authMemBearerMapClient[t] = string(id)
-			}
-			for t := range authMemBearerMapClient {
-				authMemMap[auth.TBearer][t] = authMemBearerMapClient[t]
-			}
-			level.Debug(logger).Log("client.id", string(id), "auth", "bearer", "tokens", len(authMemBearerMapClient))
-		}
-	}
-	newAuth := auth.NewManager(&logger)
-	err = newAuth.ApplyConfig(cfg.Server.HeaderName, authMemMap)
-	if err != nil {
-		return nil, err
-	}
-
-	return newAuth, nil
-}
-
-func configureFilter(cfg *config.Config) (*filter.Manager, error) {
-	newFilter := filter.NewManager(&logger)
-
-	matchMap := make(map[string][]string)
-	for id, c := range cfg.Clients {
-		matchMap[string(id)] = c.Match
-	}
-	err := newFilter.ApplyConfig(cfg.Server.HeaderName, matchMap)
-	if err != nil {
-		return nil, err
-	}
-
-	return newFilter, nil
-}
-
-func reloadConfig() error {
+func reloadConfig(cmp *config.ConfigManager) error {
 	cfg, err := cmp.LoadConfig()
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "cannot load config file ")
 	}
 
 	newAmp := auth.NewManager(&logger)
 	if cfg.Server.Authentication {
-		newAmp, err = configureAuth(&cfg)
+		authMemMap, err := config.ExtractAuthMap(&cfg)
 		if err != nil {
-			level.Error(logger).Log("msg", "cannot init new auth config", "err", err)
-			return err
+			return errors.Wrapf(err, "error extracting auth map from config")
+		}
+		err = newAmp.ApplyConfig(cfg.Server.HeaderName, authMemMap)
+		if err != nil {
+			return errors.Wrapf(err, "error create new auth config")
 		}
 	}
 
-	newFmp, err := configureFilter(&cfg)
+	newFmp := filter.NewManager(&logger)
+	matchMap, err := config.ExtractFilterMap(&cfg)
 	if err != nil {
-		level.Error(logger).Log("msg", "cannot init new filter config", "err", err)
-		return err
+		return errors.Wrapf(err, "error extracting filter map from config")
 	}
+	err = newFmp.ApplyConfig(cfg.Server.HeaderName, matchMap)
+	if err != nil {
+		return errors.Wrapf(err, "error create new filter config")
+	}
+
+	// finally apply all
+
+	Cfg = cfg
 
 	err = amp.CopyConfig(newAmp)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "error apply new auth config")
 	}
 	err = fmp.CopyConfig(newFmp)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "error apply new filter config")
 	}
 
 	return nil

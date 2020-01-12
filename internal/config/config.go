@@ -232,3 +232,26 @@ func (cm *ConfigManager) readCredsFiles(patFiles []string) ([]string, error) {
 
 	return filesContent, nil
 }
+
+func (c *ServerConfig) String() string {
+	b, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Sprintf("<error creating config string: %s>", err)
+	}
+	return string(b)
+}
+
+func (c *AuthSchema) String() string {
+	result := ""
+
+	if c.Header {
+		result = fmt.Sprintf("%s header: true \n", result)
+	}
+	if c.Basic.User != "" && c.Basic.Password != "" {
+		result = fmt.Sprintf("%s auth basic user password: true \n", result)
+	}
+	result = fmt.Sprintf("%s auth basic base64: %d \n", result, len(c.Basic.Base64))
+	result = fmt.Sprintf("%s auth bearer tokens: %d \n", result, len(c.Bearer.Tokens))
+
+	return result
+}

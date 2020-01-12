@@ -1,12 +1,15 @@
 package auth
 
 import (
+	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 )
 
 // type of auth schema
@@ -42,6 +45,10 @@ func (am *Manager) ApplyConfig(
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 
+	if err := validateConfig(authMemMap); err != nil {
+		return errors.Wrapf(err, "error apply auth config ")
+	}
+
 	am.authHeaderName = authHeaderName
 	am.authMemMap = authMemMap
 
@@ -59,7 +66,7 @@ func (am *Manager) CopyConfig(manager *Manager) error {
 	return nil
 }
 
-// CheckAuth try to check headers
+// CheckAuth try to check auth headers and set authHeaderName header
 func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// check header
@@ -119,4 +126,45 @@ func (am *Manager) bearerAuthInMem(h http.Handler) http.Handler {
 		}
 		h.ServeHTTP(w, r)
 	})
+}
+
+func validateConfig(authMemMap map[int]map[string]string) error {
+	for aType, conf := range authMemMap {
+		switch aType {
+		case TBasic:
+			creds := make(map[string]string, len(conf))
+			for sBase64, id := range conf {
+				data, err := base64.StdEncoding.DecodeString(sBase64)
+				if err != nil {
+					return errors.Wrapf(err, "error decode base64 id:%s ", id)
+				}
+				userpass := strings.SplitN(string(data), ":", 2)
+				// TODO
+				if len(userpass[0]) == 0 || len(userpass[1]) == 0 {
+					return fmt.Errorf("wrong login or pass id:%s", id)
+				}
+				if oldID, ok := creds[userpass[0]]; ok {
+					return fmt.Errorf("basic duplicate usernane id1:%s, id2:%s ", oldID, id)
+				}
+				creds[userpass[0]] = id
+			}
+		case TBearer:
+			for sToken, id := range conf {
+				// TODO
+				if len(sToken) < 2 {
+					return fmt.Errorf("wrong token id:%s", id)
+				}
+			}
+		case THeader:
+			for sHeader, id := range conf {
+				// TODO
+				if len(sHeader) == 0 {
+					return fmt.Errorf("empty header id:%s", id)
+				}
+			}
+		default:
+			return fmt.Errorf("wrong auth type ")
+		}
+	}
+	return nil
 }
