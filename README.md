@@ -28,13 +28,14 @@ Flags:
   -c, --config="config.yaml"  Configuration file
 ```
 
-also please look at example/config.yaml
+also please look at configs/config.yaml
 
 You can reload config trough SIGHUP like:
 
 ```bash
 skill -SIGHUP prom-liver
 ```
+
 or send PUT/POST on admin api port
 
 ```bash
@@ -44,5 +45,6 @@ curl -X POST http://localhost:8888/admin/config/reload
 ## TODO
 
 - [ ] /healthz
+- [ ] apility to inject labels (with matches also)
 - [ ] usage as auth middleware for nginx/traefik/etc
 - [ ] vault integration (? maybe just example with consul-template)
