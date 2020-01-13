@@ -1,11 +1,13 @@
 # prom-liver
 
-Auth filter for prometheus:
+Auth filter for prometheus (reverse-proxy):
 
 - /api/v1/query
 - /api/v1/query_range
 - /api/v1/series
 - /federate
+
+Basic / Bearer token auth. Checking labels matchers. Yaml config.
 
 ## USAGE
 
