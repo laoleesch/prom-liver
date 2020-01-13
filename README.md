@@ -17,7 +17,6 @@ You can build it or use docker image laoleesch/prom-liver:latest
 docker run -d -p 8080:8080 -v /<PATH>/prom-liver-config:/prom-liver laoleesch/prom-liver:latest
 ```
 
-
 ```bash
 $ ./prom-liver -h
 usage: prom-liver [<flags>]
@@ -47,6 +46,6 @@ curl -X POST http://localhost:8888/admin/config/reload
 ## TODO
 
 - [ ] /healthz
-- [ ] apility to inject labels (with matches also)
+- [ ] ability to inject labels (with matches also)
 - [ ] usage as auth middleware for nginx/traefik/etc
 - [ ] vault integration (? maybe just example with consul-template)
