@@ -1,13 +1,20 @@
 # prom-liver
 
-Auth filter for prometheus (reverse-proxy):
+Auth ACL filter for PromQL (Prometheus, VictoriaMetrics):
+
+Prometheus API:
 
 - /api/v1/query
 - /api/v1/query_range
 - /api/v1/series
 - /federate
 
-Basic / Bearer token auth. Checking labels matchers. Yaml config.
+VictoriaMetrics PromQL external API:
+
+- /api/v1/labels
+- /api/v1/label/{label}/values
+
+Reverse-proxy. Basic / Bearer token auth. Matching labels. YAML config.
 
 ## USAGE
 
@@ -21,7 +28,7 @@ docker run -d -p 8080:8080 -v /<PATH>/prom-liver-config:/prom-liver laoleesch/pr
 $ ./prom-liver -h
 usage: prom-liver [<flags>]
 
-Auth-filter-reverse-proxy-server for Prometheus
+ACL for PromQL
 
 Flags:
   -h, --help                  Show context-sensitive help (also try --help-long and --help-man).
@@ -29,15 +36,15 @@ Flags:
   -c, --config="config.yaml"  Configuration file
 ```
 
-also please look at configs/config.yaml
+Please look at [config.yaml](https://github.com/laoleesch/prom-liver/blob/master/configs/config.yaml) example
 
-You can reload config trough SIGHUP like:
+Supports configuration reload at runtime through SIGHUP:
 
 ```bash
 skill -SIGHUP prom-liver
 ```
 
-or send PUT/POST on admin api port
+or PUT/POST request on a separate port:
 
 ```bash
 curl -X POST http://localhost:8888/admin/config/reload
@@ -45,7 +52,7 @@ curl -X POST http://localhost:8888/admin/config/reload
 
 ## TODO
 
-- [ ] /healthz
+- [ ] /liver/metrics
 - [ ] ability to inject labels (with matches also)
 - [ ] usage as auth middleware for nginx/traefik/etc
-- [ ] vault integration (? maybe just example with consul-template)
+- [ ] vault integration (? maybe just an example on consul-template)

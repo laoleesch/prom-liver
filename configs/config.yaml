@@ -7,6 +7,7 @@ server:
   authentication: true              #default true
   id-header: 'X-Prom-Liver-Id'    #default X-Prom-Liver-Id (could be reloaded)
   api-enable: true                #default true
+  api-labels-enable: true         #default false
   federate-enable: true           #default true
   admin-api-enable: true          #default true (POST/PUT to <admin-port>:/admin/config/reload)
   admin-port: 8888                #default 8888

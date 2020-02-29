@@ -49,7 +49,7 @@ var (
 
 func main() {
 
-	c := kingpin.New(filepath.Base(os.Args[0]), "Auth-filter-reverse-proxy-server for Prometheus")
+	c := kingpin.New(filepath.Base(os.Args[0]), "ACL for PromQL")
 	c.HelpFlag.Short('h')
 	c.Flag("loglevel", "Log level: debug, info, warning, error").Default("info").Short('l').StringVar(&cmdLogLevel)
 	c.Flag("config", "Configuration file").Short('c').Default("config.yaml").StringVar(&cmdConfigFile)
@@ -132,6 +132,12 @@ func main() {
 	}
 	if Cfg.Server.Federate {
 		r.Handle("/federate", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+	}
+	if Cfg.Server.APIVMLabels {
+		r.Handle("/api/v1/label/{label}/values", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		level.Info(logger).Log("server.uri", "/api/v1/label/*/valuese", "server.uri.methods", "GET")
+		r.Handle("/api/v1/labels", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Server.Proxy))).Methods("GET")
+		level.Info(logger).Log("server.uri", "/api/v1/labels", "server.uri.methods", "GET")
 	}
 
 	srv := &http.Server{

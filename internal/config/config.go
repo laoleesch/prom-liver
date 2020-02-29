@@ -21,6 +21,7 @@ var (
 	DefaultServerConfig = ServerConfig{
 		Port:           "8080",
 		API:            true,
+		APIVMLabels:    false,
 		Federate:       true,
 		Proxy:          "http://localhost:9090/",
 		Authentication: true,
@@ -43,6 +44,7 @@ type ServerConfig struct {
 	Proxy          string `yaml:"proxy,omitempty"`
 	HeaderName     string `yaml:"id-header,omitempty"`
 	API            bool   `yaml:"api-enable,omitempty"`
+	APIVMLabels    bool   `yaml:"api-labels-enable,omitempty"` // extended promql handlers for VictoriaMetrics
 	Federate       bool   `yaml:"federate-enable,omitempty"`
 	Authentication bool   `yaml:"authentication,omitempty"`
 
