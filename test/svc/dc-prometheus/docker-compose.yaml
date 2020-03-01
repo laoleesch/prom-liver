@@ -5,16 +5,16 @@
 
 version: '3.2'
 services:
-  # prom-liver:
-  #   image: laoleesch/prom-liver:latest
-  #   container_name: prom-liver
-  #   command: -l debug
-  #   ports:
-  #   - 8080:8080
-  #   volumes:
-  #   - ./prom-liver-config.yaml:/prom-liver/config.yaml:ro
-  #   depends_on:
-  #   - prometheus
+  prom-liver:
+    image: laoleesch/prom-liver:stage
+    container_name: prom-liver
+    command: -l debug
+    ports:
+    - 8080:8080
+    volumes:
+    - ./config.yaml:/prom-liver/config.yaml:ro
+    depends_on:
+    - prometheus
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
