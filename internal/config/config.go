@@ -61,8 +61,9 @@ type ClientID string
 //ClientConfig client configuration
 type ClientConfig struct {
 	// ID    string     `yaml:"id"`
-	Auth  AuthSchema `yaml:"auth,omitempty"`
-	Match []string   `yaml:"match"`
+	Auth   AuthSchema `yaml:"auth,omitempty"`
+	Match  []string   `yaml:"match,omitempty"`
+	Inject string     `yaml:"inject,omitempty"`
 }
 
 // AuthSchema describe all available auth schemes
@@ -252,8 +253,11 @@ func (c *AuthSchema) String() string {
 	if c.Basic.User != "" && c.Basic.Password != "" {
 		result = fmt.Sprintf("%s auth basic user password: true \n", result)
 	}
-	result = fmt.Sprintf("%s auth basic base64: %d \n", result, len(c.Basic.Base64))
-	result = fmt.Sprintf("%s auth bearer tokens: %d \n", result, len(c.Bearer.Tokens))
-
+	if len(c.Basic.Base64) > 0 {
+		result = fmt.Sprintf("%s auth basic base64: %d \n", result, len(c.Basic.Base64))
+	}
+	if len(c.Bearer.Tokens) > 0 {
+		result = fmt.Sprintf("%s auth bearer tokens: %d \n", result, len(c.Bearer.Tokens))
+	}
 	return result
 }

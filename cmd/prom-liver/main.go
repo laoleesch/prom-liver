@@ -226,11 +226,11 @@ func reloadConfig(cmp *config.ConfigManager) error {
 	}
 
 	newFmp := filter.NewManager(&logger)
-	matchMap, err := config.ExtractFilterMap(&cfg)
+	matchMap, injectMap, err := config.ExtractFilterMap(&cfg)
 	if err != nil {
 		return errors.Wrapf(err, "error extracting filter map from config")
 	}
-	err = newFmp.ApplyConfig(cfg.Server.HeaderName, matchMap)
+	err = newFmp.ApplyConfig(cfg.Server.HeaderName, matchMap, injectMap)
 	if err != nil {
 		return errors.Wrapf(err, "error create new filter config")
 	}

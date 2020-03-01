@@ -15,6 +15,7 @@ import (
 type Manager struct {
 	idHeaderName string
 	matchMemMap  map[string][][]*labels.Matcher
+	injectMemMap map[string][]*labels.Matcher
 	logger       kitlog.Logger
 	mtx          sync.RWMutex
 }
@@ -24,33 +25,52 @@ func NewManager(l *kitlog.Logger) *Manager {
 	fm := &Manager{
 		idHeaderName: "",
 		matchMemMap:  make(map[string][][]*labels.Matcher),
+		injectMemMap: make(map[string][]*labels.Matcher),
 		logger:       *l,
 	}
 	return fm
 }
 
 // ApplyConfig apply new config
-func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string) error {
+func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string, injectMap map[string]string) error {
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
-	matchMemMap := make(map[string][][]*labels.Matcher)
-	var matcherSets [][]*labels.Matcher
+	if (len(matchMap) == 0 && len(injectMap) == 0) || idHeaderName == "" {
+		return fmt.Errorf("wrong filter config")
+	}
 
-	for id, matches := range matchMap {
-		matcherSets = make([][]*labels.Matcher, 0)
-		for _, s := range matches {
-			matchers, err := promql.ParseMetricSelector(s)
+	if len(matchMap) > 0 {
+		matchMemMap := make(map[string][][]*labels.Matcher)
+		var matcherSets [][]*labels.Matcher
+		for id, matches := range matchMap {
+			matcherSets = make([][]*labels.Matcher, 0)
+			for _, s := range matches {
+				matchers, err := promql.ParseMetricSelector(s)
+				if err != nil {
+					return err
+				}
+				matcherSets = append(matcherSets, matchers)
+			}
+			matchMemMap[id] = matcherSets
+			level.Debug(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", matchMemMap[id]))
+		}
+		fm.matchMemMap = matchMemMap
+	}
+
+	if len(injectMap) > 0 {
+		injectMemMap := make(map[string][]*labels.Matcher)
+		for id, s := range injectMap {
+			inject, err := promql.ParseMetricSelector(s)
 			if err != nil {
 				return err
 			}
-			matcherSets = append(matcherSets, matchers)
+			injectMemMap[id] = inject
+			level.Debug(fm.logger).Log("client.id", id, "inject", fmt.Sprintf("%v", injectMemMap[id]))
 		}
-		matchMemMap[id] = matcherSets
-		level.Debug(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", matchMemMap[id]))
+		fm.injectMemMap = injectMemMap
 	}
 
-	fm.matchMemMap = matchMemMap
 	fm.idHeaderName = idHeaderName
 	return nil
 }
@@ -60,8 +80,13 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
+	if (len(manager.matchMemMap) == 0 && len(manager.injectMemMap) == 0) || manager.idHeaderName == "" {
+		return fmt.Errorf("wrong filter config")
+	}
+
 	fm.idHeaderName = manager.idHeaderName
 	fm.matchMemMap = manager.matchMemMap
+	fm.injectMemMap = manager.injectMemMap
 
 	return nil
 }

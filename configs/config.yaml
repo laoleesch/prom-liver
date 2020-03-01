@@ -37,5 +37,5 @@ clients:
           - 'TESTTEST'
           - 'TESTTEST2'
     match:
-      - '{project="cadvisor", env="test"}'
-      # - 'up{project="cadvisor", env="test"}'
+      - 'up'
+    inject: '{project="cadvisor", env="test"}'

@@ -19,6 +19,14 @@ func ExtractAuthMap(cfg *Config) (map[int]map[string]string, error) {
 	var err error
 
 	for id, c := range cfg.Clients {
+
+		// check if empty auth config when Server.Auth = true
+		// i don't like this way, but..
+		if c.Auth.String() == "" {
+			err = fmt.Errorf("global Auth is enabled but no auth config for client id: %v", id)
+			return nil, err
+		}
+
 		// Header id set for Auth-enabled-cases
 		if c.Auth.Header {
 			authMemMap[auth.THeader][string(id)] = "true"
@@ -68,12 +76,23 @@ func ExtractAuthMap(cfg *Config) (map[int]map[string]string, error) {
 	return authMemMap, nil
 }
 
-func ExtractFilterMap(cfg *Config) (map[string][]string, error) {
+func ExtractFilterMap(cfg *Config) (matchMap map[string][]string, injectMap map[string]string, err error) {
 
-	matchMap := make(map[string][]string)
+	err = nil
+
+	matchMap = make(map[string][]string)
+	injectMap = make(map[string]string)
 	for id, c := range cfg.Clients {
-		matchMap[string(id)] = c.Match
+		if len(c.Match) == 0 && len(c.Inject) == 0 {
+			err = fmt.Errorf("no match or filter config for client id: %v", id)
+			return nil, nil, err
+		}
+		if len(c.Match) > 0 {
+			matchMap[string(id)] = c.Match
+		}
+		if len(c.Inject) > 0 {
+			injectMap[string(id)] = c.Inject
+		}
 	}
-
-	return matchMap, nil
+	return
 }
