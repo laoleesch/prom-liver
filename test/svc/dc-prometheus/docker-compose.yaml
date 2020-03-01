@@ -1,0 +1,43 @@
+# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22go-metrics%22%7D -H "Authorization: Basic Y2Fkdmlzb3I6Y2Fkdmlzb3I=" -H "X-Prom-Liver-Id: go-metrics"
+# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22cadvisor%22,%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"
+# curl -X GET 'http://localhost:8080/api/v1/query?query=up%7Benv%3D%22test%22%2Cinstance%3D%22cadvisor%3A8080%22%2Cjob%3D%22cadvisor%22%2Cproject%3D%22cadvisor%22%7D&time=1567587907.668&_=1567587842765' -H "Authorization: Bearer TESTTEST"
+# curl -X GET 'http://localhost:8080/api/v1/query?query=up%7Benv%3D%22test%22%2Cinstance%3D%22cadvisor%3A8080%22%2Cjob%3D%22cadvisor%22%2Cproject%3D%22cadvisor%22%7D%5B1m%5D' -H "Authorization: Bearer TESTTEST"
+
+version: '3.2'
+services:
+  # prom-liver:
+  #   image: laoleesch/prom-liver:latest
+  #   container_name: prom-liver
+  #   command: -l debug
+  #   ports:
+  #   - 8080:8080
+  #   volumes:
+  #   - ./prom-liver-config.yaml:/prom-liver/config.yaml:ro
+  #   depends_on:
+  #   - prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+    - 9090:9090
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    volumes:
+    - /:/rootfs:ro
+    - /var/run:/var/run:rw
+    - /sys:/sys:ro
+    - /var/lib/docker/:/var/lib/docker:ro
+  # grafana:
+  #   image: grafana/grafana
+  #   user: "104"
+  #   depends_on:
+  #     - prometheus
+  #   ports:
+  #     - 3000:3000
+  #   restart: always
+

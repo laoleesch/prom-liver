@@ -3,11 +3,12 @@
 ##################################################
 server:
   proxy: "http://localhost:9090/"   #default http://localhost:9090
+  # proxy: "http://localhost:8428/" 
   port: 8080                        #default 8080
   authentication: true              #default true
   id-header: 'X-Prom-Liver-Id'    #default X-Prom-Liver-Id (could be reloaded)
   api-enable: true                #default true
-  api-labels-enable: true         #default false
+  api-labels-enable: true         #default false (for VictoriaMetrics only! don't activate on prometheus!)
   federate-enable: true           #default true
   admin-api-enable: true          #default true (POST/PUT to <admin-port>:/admin/config/reload)
   admin-port: 8888                #default 8888
@@ -36,9 +37,5 @@ clients:
           - 'TESTTEST'
           - 'TESTTEST2'
     match:
-      - 'up{project="cadvisor", env="test"}'
-
-# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22go-metrics%22%7D -H "Authorization: Basic Y2Fkdmlzb3I6Y2Fkdmlzb3I=" -H "X-Prom-Liver-Id: go-metrics"
-# curl -X GET http://localhost:8080/federate?match%5B%5D=up%7Bproject=%22cadvisor%22,%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"
-# curl -X GET 'http://localhost:8080/api/v1/query?query=up%7Benv%3D%22test%22%2Cinstance%3D%22cadvisor%3A8080%22%2Cjob%3D%22cadvisor%22%2Cproject%3D%22cadvisor%22%7D&time=1567587907.668&_=1567587842765' -H "Authorization: Bearer TESTTEST"
-# curl -X GET 'http://localhost:8080/api/v1/query?query=up%7Benv%3D%22test%22%2Cinstance%3D%22cadvisor%3A8080%22%2Cjob%3D%22cadvisor%22%2Cproject%3D%22cadvisor%22%7D%5B1m%5D' -H "Authorization: Bearer TESTTEST"
+      - '{project="cadvisor", env="test"}'
+      # - 'up{project="cadvisor", env="test"}'
