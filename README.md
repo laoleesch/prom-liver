@@ -1,5 +1,7 @@
 # prom-liver
 
+![Travis (.org)](https://img.shields.io/travis/laoleesch/prom-liver?style=flat-square) ![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/laoleesch/prom-liver?style=flat-square)
+
 Auth ACL filter for PromQL (Prometheus, VictoriaMetrics):
 
 Prometheus API:
