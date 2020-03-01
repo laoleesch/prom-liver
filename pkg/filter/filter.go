@@ -130,16 +130,25 @@ func (fm *Manager) FilterQuery(parameter string, h http.Handler) http.Handler {
 
 func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string, error) {
 	filteredQueries := make([]string, 0)
-	level.Debug(fm.logger).Log("msg", "request matches sets", "id", rID, "value", fmt.Sprintf("%v", queries))
+	level.Debug(fm.logger).Log("msg", "request sets", "id", rID, "value", fmt.Sprintf("%v", queries))
 	for _, s := range queries {
 		expr, err := promql.ParseExpr(s)
 		if err != nil {
 			return filteredQueries, err
 		}
-		if err = promql.Walk(inspector(checkLabels(fm.matchMemMap[rID])), expr, nil); err == nil {
-			s = expr.String()
-			filteredQueries = append(filteredQueries, s)
+		if len(fm.injectMemMap[rID]) > 0 {
+			// lets try just to add injected Matchers
+			if err = promql.Walk(inspector(injectLabels(fm.injectMemMap[rID])), expr, nil); err != nil {
+				return nil, err
+			}
 		}
+		if len(fm.matchMemMap[rID]) > 0 {
+			if err = promql.Walk(inspector(checkLabels(fm.matchMemMap[rID])), expr, nil); err != nil {
+				return nil, err
+			}
+		}
+		s = expr.String()
+		filteredQueries = append(filteredQueries, s)
 	}
 	return filteredQueries, nil
 }
@@ -170,6 +179,18 @@ func checkLabels(matchMemSet [][]*labels.Matcher) func(node promql.Node, path []
 				}
 			}
 			return fmt.Errorf("not match %v", matchMemSet)
+		}
+		return nil
+	}
+}
+
+func injectLabels(injectMemSet []*labels.Matcher) func(node promql.Node, path []promql.Node) error {
+	return func(node promql.Node, path []promql.Node) error {
+		switch n := node.(type) {
+		case *promql.VectorSelector:
+			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
+		case *promql.MatrixSelector:
+			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
 		}
 		return nil
 	}

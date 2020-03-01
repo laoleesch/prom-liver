@@ -28,8 +28,8 @@ clients:
           - "configs/secret_*"
     match:
       - '{project=~"go-.*"}'
-      - '{env="test"}'
-      - '{some=~".*oops.*"}'
+      - 'job{env="test"}'
+      - 'up{some=~".*oops.*"}'
   'cadvisor':
     auth:
       bearer:
@@ -37,5 +37,5 @@ clients:
           - 'TESTTEST'
           - 'TESTTEST2'
     match:
-      - 'up'
-    inject: '{project="cadvisor", env="test"}'
+      - '{env="test"}'
+    inject: '{project="cadvisor"}'

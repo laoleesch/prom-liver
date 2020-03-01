@@ -3,8 +3,8 @@
 # curl -X GET 'http://localhost:8080/api/v1/query?query=up%7Benv%3D%22test%22%2Cinstance%3D%22cadvisor%3A8080%22%2Cjob%3D%22cadvisor%22%2Cproject%3D%22cadvisor%22%7D&time=1567587907.668&_=1567587842765' -H "Authorization: Bearer TESTTEST"
 # curl -X GET 'http://localhost:8080/api/v1/query?query=up%7Benv%3D%22test%22%2Cinstance%3D%22cadvisor%3A8080%22%2Cjob%3D%22cadvisor%22%2Cproject%3D%22cadvisor%22%7D%5B1m%5D' -H "Authorization: Bearer TESTTEST"
 
-# curl -X GET http://localhost:8080/api/v1/labels?match%5B%5D=%7Bproject=%22cadvisor%22,%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"
-# curl -X GET http://localhost:8080/api/v1/label/job/values?match%5B%5D=%7Bproject=%22cadvisor%22,%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"
+# curl -X GET http://localhost:8080/api/v1/labels?match%5B%5D=%7B%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"
+# curl -X GET http://localhost:8080/api/v1/label/job/values?match%5B%5D=%7B%20env=%22test%22%7D -H "Authorization: Bearer TESTTEST"
 
 version: '3.2'
 services:

@@ -23,4 +23,5 @@ clients:
           - 'TESTTEST'
           - 'TESTTEST2'
     match:
-      - 'up{project="cadvisor", env="test"}'
+      - 'up{env="test"}'
+    inject: '{project="cadvisor"}'

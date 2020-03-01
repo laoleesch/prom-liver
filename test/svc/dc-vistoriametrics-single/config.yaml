@@ -26,4 +26,5 @@ clients:
         user: user1
         password: password1
     match:
-      - '{project="cadvisor", env="test"}'
+      - '{env="test"}'
+    inject: '{project="cadvisor"}'
