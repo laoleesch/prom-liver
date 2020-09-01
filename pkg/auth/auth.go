@@ -85,10 +85,10 @@ func (am *Manager) CheckAuth(h http.Handler) http.Handler {
 		}
 		switch strings.ToLower(auth[0]) {
 		case "basic":
-			level.Debug(am.logger).Log("msg", "found Basic Authorizatoin header")
+			level.Debug(am.logger).Log("msg", "found Basic Authorization header")
 			am.basicAuthInMem(h).ServeHTTP(w, r)
 		case "bearer":
-			level.Debug(am.logger).Log("msg", "found Bearer Authorizatoin header")
+			level.Debug(am.logger).Log("msg", "found Bearer Authorization header")
 			am.bearerAuthInMem(h).ServeHTTP(w, r)
 		default:
 			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
