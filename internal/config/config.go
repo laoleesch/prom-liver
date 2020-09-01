@@ -19,7 +19,7 @@ var (
 
 	// DefaultServerConfig is the default global configuration.
 	DefaultServerConfig = ServerConfig{
-		Port:           "8080",
+
 		API:            true,
 		APIVMLabels:    false,
 		Federate:       true,
@@ -43,19 +43,21 @@ type Config struct {
 
 // ServerConfig includes only "server:" three
 type ServerConfig struct {
-	Port                     string `yaml:"port,omitempty"`
-	Proxy                    string `yaml:"proxy,omitempty"`
-	HeaderName               string `yaml:"id-header,omitempty"`
 	API                      bool   `yaml:"api-enable,omitempty"`
 	APIVMLabels              bool   `yaml:"api-labels-enable,omitempty"` // extended promql handlers for VictoriaMetrics
 	Federate                 bool   `yaml:"federate-enable,omitempty"`
 	Authentication           bool   `yaml:"authentication,omitempty"`
 
 	AdminAPI                 bool   `yaml:"admin-api-enable,omitempty"`
+
+	RemoteInsecureSkipVerify bool   `yaml:"remote-insecure-skip-verify,omitempty"`
+
 	AdminPort                string `yaml:"admin-port,omitempty"`
+	Port                     string `yaml:"port,omitempty"`
+	Proxy                    string `yaml:"proxy,omitempty"`
+	HeaderName               string `yaml:"id-header,omitempty"`
 
 	RemoteAuth               string `yaml:"remote-auth,omitempty"`
-	RemoteInsecureSkipVerify bool   `yaml:"remote-insecure-skip-verify,omitempty"`
 }
 
 //Clients includes configuration for each client
