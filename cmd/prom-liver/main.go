@@ -26,6 +26,7 @@ import (
 	config "github.com/laoleesch/prom-liver/internal/config"
 	auth "github.com/laoleesch/prom-liver/pkg/auth"
 	filter "github.com/laoleesch/prom-liver/pkg/filter"
+	"crypto/tls"
 )
 
 var (
@@ -35,7 +36,7 @@ var (
 	cmdConfigFile string
 	cmdLogLevel   string
 
-	// gloabal config
+	// global config
 	Cfg config.Config
 
 	// reload config channel
@@ -254,11 +255,19 @@ func reloadConfig(cmp *config.ConfigManager) error {
 // reverse proxy
 func serveReverseProxy(target string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	    if Cfg.Server.RemoteInsecureSkipVerify {
+		    http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    	}
+
 		url, _ := url.Parse(target)
 		proxy := httputil.NewSingleHostReverseProxy(url)
 		r.URL.Host = url.Host
 		r.URL.Scheme = url.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
+		if Cfg.Server.RemoteAuth != "" {
+		    r.Header.Set("Authorization", Cfg.Server.RemoteAuth)
+		}
 		r.Host = url.Host
 		r.RequestURI = url.EscapedPath() + r.RequestURI
 		level.Debug(logger).Log("send form", fmt.Sprintf("%v", r.Form))
