@@ -9,9 +9,9 @@ before_install:
 
 script:
     - GOOS=linux CGO_ENABLED=0 go build cmd/prom-liver/main.go
-    - golangci-lint --version
-    - golangci-lint run
     - go test -v ./...
 
 after_success:
+    - golangci-lint --version
+    - golangci-lint run
     - curl -XPOST $DOCKER_BUILD_TRIGGER
