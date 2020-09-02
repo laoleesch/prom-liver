@@ -144,7 +144,8 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string,
 		}
 		if len(fm.matchMemMap[rID]) > 0 {
 			if err = promql.Walk(inspector(checkLabels(fm.matchMemMap[rID])), expr, nil); err != nil {
-				return nil, err
+				level.Debug(fm.logger).Log("msg", "check labels error", "id", rID, "err", err)
+				continue
 			}
 		}
 		s = expr.String()
