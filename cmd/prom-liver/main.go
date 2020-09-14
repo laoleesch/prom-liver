@@ -23,10 +23,11 @@ import (
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
+	"crypto/tls"
+
 	config "github.com/laoleesch/prom-liver/internal/config"
 	auth "github.com/laoleesch/prom-liver/pkg/auth"
 	filter "github.com/laoleesch/prom-liver/pkg/filter"
-	"crypto/tls"
 )
 
 var (
@@ -227,11 +228,11 @@ func reloadConfig(cmp *config.ConfigManager) error {
 	}
 
 	newFmp := filter.NewManager(&logger)
-	matchMap, injectMap, err := config.ExtractFilterMap(&cfg)
+	matchMap, injectMap, filterMap, err := config.ExtractFilterMap(&cfg)
 	if err != nil {
 		return errors.Wrapf(err, "error extracting filter map from config")
 	}
-	err = newFmp.ApplyConfig(cfg.Server.HeaderName, matchMap, injectMap)
+	err = newFmp.ApplyConfig(cfg.Server.HeaderName, matchMap, injectMap, filterMap)
 	if err != nil {
 		return errors.Wrapf(err, "error create new filter config")
 	}
@@ -256,9 +257,9 @@ func reloadConfig(cmp *config.ConfigManager) error {
 func serveReverseProxy(target string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-	    if Cfg.Server.RemoteInsecureSkipVerify {
-		    http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-    	}
+		if Cfg.Server.RemoteInsecureSkipVerify {
+			http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		}
 
 		url, _ := url.Parse(target)
 		proxy := httputil.NewSingleHostReverseProxy(url)
@@ -266,11 +267,11 @@ func serveReverseProxy(target string) http.Handler {
 		r.URL.Scheme = url.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		if Cfg.Server.RemoteAuth != "" {
-		    r.Header.Set("Authorization", Cfg.Server.RemoteAuth)
+			r.Header.Set("Authorization", Cfg.Server.RemoteAuth)
 		}
 		r.Host = url.Host
 		r.RequestURI = url.EscapedPath() + r.RequestURI
-		level.Debug(logger).Log("send form", fmt.Sprintf("%v", r.Form))
+		level.Debug(logger).Log("send uri", fmt.Sprintf("%v", r))
 		proxy.ServeHTTP(w, r)
 	})
 }

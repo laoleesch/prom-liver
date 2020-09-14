@@ -2,7 +2,8 @@
 #  example config
 ##################################################
 server:
-  proxy: "http://localhost:9090/"   #default http://localhost:9090
+  # proxy: "http://localhost:9090/"   #default http://localhost:9090
+  proxy: "https://vm-01.dp.nlmk.com:8428"
   # proxy: "http://localhost:8428/" 
   port: 8080                            #default 8080
   authentication: true                  #default true
@@ -40,4 +41,6 @@ clients:
           - 'TESTTEST2'
     match:
       - '{env="test"}'
-    inject: '{project="cadvisor"}'
+    inject: '{project="spep",__name__="net_tcp_attemptfails"}'
+    filter:
+      - '{xxxxx="xxxx"}'

@@ -29,8 +29,8 @@ var (
 		AdminAPI:       true,
 		AdminPort:      "8888",
 
-		RemoteAuth:     "",
-	    RemoteInsecureSkipVerify: false,
+		RemoteAuth:               "",
+		RemoteInsecureSkipVerify: false,
 	}
 )
 
@@ -43,21 +43,21 @@ type Config struct {
 
 // ServerConfig includes only "server:" three
 type ServerConfig struct {
-	API                      bool   `yaml:"api-enable,omitempty"`
-	APIVMLabels              bool   `yaml:"api-labels-enable,omitempty"` // extended promql handlers for VictoriaMetrics
-	Federate                 bool   `yaml:"federate-enable,omitempty"`
-	Authentication           bool   `yaml:"authentication,omitempty"`
+	API            bool `yaml:"api-enable,omitempty"`
+	APIVMLabels    bool `yaml:"api-labels-enable,omitempty"` // extended promql handlers for VictoriaMetrics
+	Federate       bool `yaml:"federate-enable,omitempty"`
+	Authentication bool `yaml:"authentication,omitempty"`
 
-	AdminAPI                 bool   `yaml:"admin-api-enable,omitempty"`
+	AdminAPI bool `yaml:"admin-api-enable,omitempty"`
 
-	RemoteInsecureSkipVerify bool   `yaml:"remote-insecure-skip-verify,omitempty"`
+	RemoteInsecureSkipVerify bool `yaml:"remote-insecure-skip-verify,omitempty"`
 
-	AdminPort                string `yaml:"admin-port,omitempty"`
-	Port                     string `yaml:"port,omitempty"`
-	Proxy                    string `yaml:"proxy,omitempty"`
-	HeaderName               string `yaml:"id-header,omitempty"`
+	AdminPort  string `yaml:"admin-port,omitempty"`
+	Port       string `yaml:"port,omitempty"`
+	Proxy      string `yaml:"proxy,omitempty"`
+	HeaderName string `yaml:"id-header,omitempty"`
 
-	RemoteAuth               string `yaml:"remote-auth,omitempty"`
+	RemoteAuth string `yaml:"remote-auth,omitempty"`
 }
 
 //Clients includes configuration for each client
@@ -72,6 +72,7 @@ type ClientConfig struct {
 	Auth   AuthSchema `yaml:"auth,omitempty"`
 	Match  []string   `yaml:"match,omitempty"`
 	Inject string     `yaml:"inject,omitempty"`
+	Filter []string   `yaml:"filter,omitempty"`
 }
 
 // AuthSchema describe all available auth schemes

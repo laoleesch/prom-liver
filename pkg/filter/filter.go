@@ -16,6 +16,7 @@ type Manager struct {
 	idHeaderName string
 	matchMemMap  map[string][][]*labels.Matcher
 	injectMemMap map[string][]*labels.Matcher
+	filterMemMap map[string][][]*labels.Matcher
 	logger       kitlog.Logger
 	mtx          sync.RWMutex
 }
@@ -26,17 +27,18 @@ func NewManager(l *kitlog.Logger) *Manager {
 		idHeaderName: "",
 		matchMemMap:  make(map[string][][]*labels.Matcher),
 		injectMemMap: make(map[string][]*labels.Matcher),
+		filterMemMap: make(map[string][][]*labels.Matcher),
 		logger:       *l,
 	}
 	return fm
 }
 
 // ApplyConfig apply new config
-func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string, injectMap map[string]string) error {
+func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string, injectMap map[string]string, filterMap map[string][]string) error {
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
-	if (len(matchMap) == 0 && len(injectMap) == 0) || idHeaderName == "" {
+	if (len(matchMap)+len(injectMap)+len(filterMap) == 0) || idHeaderName == "" {
 		return fmt.Errorf("wrong filter config")
 	}
 
@@ -71,6 +73,24 @@ func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string
 		fm.injectMemMap = injectMemMap
 	}
 
+	if len(filterMap) > 0 {
+		filterMemMap := make(map[string][][]*labels.Matcher)
+		var matcherSets [][]*labels.Matcher
+		for id, matches := range filterMap {
+			matcherSets = make([][]*labels.Matcher, 0)
+			for _, s := range matches {
+				matchers, err := promql.ParseMetricSelector(s)
+				if err != nil {
+					return err
+				}
+				matcherSets = append(matcherSets, matchers)
+			}
+			filterMemMap[id] = matcherSets
+			level.Debug(fm.logger).Log("client.id", id, "filterset", fmt.Sprintf("%v", filterMemMap[id]))
+		}
+		fm.filterMemMap = filterMemMap
+	}
+
 	fm.idHeaderName = idHeaderName
 	return nil
 }
@@ -80,13 +100,14 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
-	if (len(manager.matchMemMap) == 0 && len(manager.injectMemMap) == 0) || manager.idHeaderName == "" {
+	if (len(manager.matchMemMap)+len(manager.injectMemMap)+len(manager.filterMemMap) == 0) || manager.idHeaderName == "" {
 		return fmt.Errorf("wrong filter config")
 	}
 
 	fm.idHeaderName = manager.idHeaderName
 	fm.matchMemMap = manager.matchMemMap
 	fm.injectMemMap = manager.injectMemMap
+	fm.filterMemMap = manager.filterMemMap
 
 	return nil
 }
@@ -108,33 +129,45 @@ func (fm *Manager) FilterQuery(parameter string, h http.Handler) http.Handler {
 			return
 		}
 
-		filteredQuery, err := fm.labelsParseAndFilter(r.Form[parameter], rID)
+		filteredQueries, err := fm.labelsParseAndFilter(r.Form[parameter], rID)
 		if err != nil {
-			level.Warn(fm.logger).Log("msg", "cannot parse query", "id", rID, "err", err)
+			level.Warn(fm.logger).Log("msg", "error on parse and filter query", "id", rID, "err", err)
 		}
 
-		if len(filteredQuery) == 0 {
-			http.Error(w, fmt.Sprintf("Wrong query. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
-			level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
+		if len(filteredQueries) == 1 {
+			if len(filteredQueries[0]) == 0 && len(fm.matchMemMap[rID]) > 0 {
+				http.Error(w, fmt.Sprintf("Wrong query. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
+				level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
+				return
+			}
+
+			q := r.URL.Query()
+			q.Del(parameter)
+			r.Form.Del(parameter)
+			for _, i := range filteredQueries[0] {
+				q.Add(parameter, i)
+			}
+			r.URL.RawQuery = q.Encode()
+			h.ServeHTTP(w, r)
 			return
 		}
-		// clean and fill form
-		r.Form.Del(parameter)
-		for _, i := range filteredQuery {
-			r.Form.Add(parameter, i)
+
+		// lets try to combine...
+		// fm.mergeQueries(filteredQueries, h)
+		for queries := range filteredQueries {
+			level.Debug(fm.logger).Log("msg", "got filters:", "id", rID, "value", fmt.Sprintf("%v", queries))
 		}
 
-		h.ServeHTTP(w, r)
 	})
 }
 
-func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string, error) {
+func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([][]string, error) {
 	filteredQueries := make([]string, 0)
 	level.Debug(fm.logger).Log("msg", "request sets", "id", rID, "value", fmt.Sprintf("%v", queries))
 	for _, s := range queries {
 		expr, err := promql.ParseExpr(s)
 		if err != nil {
-			return filteredQueries, err
+			return nil, err
 		}
 		if len(fm.injectMemMap[rID]) > 0 {
 			// lets try just to add injected Matchers
@@ -151,7 +184,33 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string,
 		s = expr.String()
 		filteredQueries = append(filteredQueries, s)
 	}
-	return filteredQueries, nil
+
+	// yet another stupid way =)
+	result := make([][]string, 0)
+
+	if len(fm.filterMemMap[rID]) > 0 {
+		for _, s := range filteredQueries {
+			subqueries := make([]string, 0)
+			for _, inj := range fm.filterMemMap[rID] {
+				expr, err := promql.ParseExpr(s)
+				if err != nil {
+					return nil, err
+				}
+
+				if err = promql.Walk(inspector(injectLabels(inj)), expr, nil); err != nil {
+					return nil, err
+				}
+
+				s = expr.String()
+				subqueries = append(subqueries, s)
+			}
+			result = append(result, subqueries)
+		}
+	} else {
+		result = append(result, filteredQueries)
+	}
+
+	return result, nil
 }
 
 type inspector func(promql.Node, []promql.Node) error
