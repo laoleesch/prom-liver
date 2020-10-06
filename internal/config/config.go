@@ -11,53 +11,58 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var (
-	// DefaultConfig is the default top-level configuration.
-	DefaultConfig = Config{
-		Server: DefaultServerConfig,
-	}
-
-	// DefaultServerConfig is the default global configuration.
-	DefaultServerConfig = ServerConfig{
-
-		API:            true,
-		APIVMLabels:    false,
-		Federate:       true,
-		Proxy:          "http://localhost:9090/",
-		Authentication: true,
-		HeaderName:     "X-Prom-Liver-Id",
-		AdminAPI:       true,
-		AdminPort:      "8888",
-
-		RemoteAuth:               "",
-		RemoteInsecureSkipVerify: false,
-	}
-)
-
 // Config includes all config.yaml
 type Config struct {
-	Server       ServerConfig `yaml:"server,omitempty"`
-	ClientsFiles []string     `yaml:"clients_files,omitempty"`
-	Clients      Clients      `yaml:"clients,omitempty"`
+	Web    WebConfig    `yaml:"web,omitempty"`
+	Remote RemoteConfig `yaml:"remote,omitempty"`
+
+	ClientsFiles []string `yaml:"clients_files,omitempty"`
+	Clients      Clients  `yaml:"clients,omitempty"`
 }
 
-// ServerConfig includes only "server:" three
-type ServerConfig struct {
-	API            bool `yaml:"api-enable,omitempty"`
-	APIVMLabels    bool `yaml:"api-labels-enable,omitempty"` // extended promql handlers for VictoriaMetrics
-	Federate       bool `yaml:"federate-enable,omitempty"`
-	Authentication bool `yaml:"authentication,omitempty"`
+// WebConfig config
+type WebConfig struct {
+	Auth       bool   `yaml:"auth,omitempty"`
+	HeaderName string `yaml:"header,omitempty"`
+	Handlers   WebHandlersConfig
+}
 
-	AdminAPI bool `yaml:"admin-api-enable,omitempty"`
+// WebHandlersConfig handlers configs
+type WebHandlersConfig struct {
+	API          bool `yaml:"api,omitempty"`
+	Federate     bool `yaml:"federate,omitempty"`
+	APIVMLabels  bool `yaml:"labels,omitempty"`
+	ConfigReload bool `yaml:"config_reload,omitempty"`
+}
 
-	RemoteInsecureSkipVerify bool `yaml:"remote-insecure-skip-verify,omitempty"`
+// RemoteConfig includes configs for remote PromQL service
+type RemoteConfig struct {
+	URL  string           `yaml:"url,omitempty"`
+	Auth RemoteAuthConfig `yaml:"auth,omitempty"`
+	TLS  RemoteTLSConfig  `yaml:"tls,omitempty"`
+}
 
-	AdminPort  string `yaml:"admin-port,omitempty"`
-	Port       string `yaml:"port,omitempty"`
-	Proxy      string `yaml:"proxy,omitempty"`
-	HeaderName string `yaml:"id-header,omitempty"`
+// RemoteAuthConfig includes auth configs for remote PromQL service
+type RemoteAuthConfig struct {
+	User     string `yaml:"user,omitempty"`
+	Password string `yaml:"password,omitempty"`
+	Token    string `yaml:"token,omitempty"`
+}
 
-	RemoteAuth string `yaml:"remote-auth,omitempty"`
+func (c *RemoteAuthConfig) String() string {
+	result := ""
+	if c.Password != "" || c.User != "" {
+		result = fmt.Sprintf("%s basic: true \n", result)
+	}
+	if c.Token != "" {
+		result = fmt.Sprintf("%s bearer: true \n", result)
+	}
+	return result
+}
+
+// RemoteTLSConfig includes TLS configs for remote PromQL service
+type RemoteTLSConfig struct {
+	Verify bool `yaml:"verify,omitempty"`
 }
 
 //Clients includes configuration for each client
@@ -96,28 +101,73 @@ type AuthSchemaBearer struct {
 	Files  []string `yaml:"files,omitempty"`
 }
 
-type ConfigManager struct {
+func (c *AuthSchema) String() string {
+	result := ""
+
+	if c.Header {
+		result = fmt.Sprintf("%s header: true \n", result)
+	}
+	if c.Basic.User != "" && c.Basic.Password != "" {
+		result = fmt.Sprintf("%s auth basic user password: true \n", result)
+	}
+	if len(c.Basic.Base64) > 0 {
+		result = fmt.Sprintf("%s auth basic base64: %d \n", result, len(c.Basic.Base64))
+	}
+	if len(c.Bearer.Tokens) > 0 {
+		result = fmt.Sprintf("%s auth bearer tokens: %d \n", result, len(c.Bearer.Tokens))
+	}
+	return result
+}
+
+// Manager controls config from file
+type Manager struct {
 	configFile string
 	logger     kitlog.Logger
 }
 
-// New creates ConfigManager
-func New(cf string, l *kitlog.Logger) (*ConfigManager, error) {
+// New creates Manager
+func New(cf string, l *kitlog.Logger) (*Manager, error) {
 	if l == nil {
 		return nil, fmt.Errorf("logger is nil")
 	}
 	if cf == "" {
 		return nil, fmt.Errorf("filename is empty")
 	}
-	cm := &ConfigManager{
+	cm := &Manager{
 		configFile: cf,
 		logger:     *l,
 	}
 	return cm, nil
 }
 
+// DefaultConfig returns default configuration
+func DefaultConfig() Config {
+	return Config{
+		Web: WebConfig{
+			Auth:       true,
+			HeaderName: "X-Prom-Liver-Id",
+			Handlers: WebHandlersConfig{
+				API:          true,
+				Federate:     true,
+				APIVMLabels:  false,
+				ConfigReload: true,
+			},
+		},
+		Remote: RemoteConfig{
+			Auth: RemoteAuthConfig{
+				User:     "",
+				Password: "",
+				Token:    "",
+			},
+			TLS: RemoteTLSConfig{
+				Verify: false,
+			},
+		},
+	}
+}
+
 // LoadConfig returns Config after it reads and parse all config files
-func (cm *ConfigManager) LoadConfig() (newCfg Config, err error) {
+func (cm *Manager) LoadConfig() (newCfg Config, err error) {
 	newCfg, err = cm.loadConfigFile()
 	if err != nil {
 		return newCfg, errors.Wrapf(err, "cannot load config file ")
@@ -142,8 +192,8 @@ func (cm *ConfigManager) LoadConfig() (newCfg Config, err error) {
 	return
 }
 
-func (cm *ConfigManager) loadConfigFile() (newCfg Config, err error) {
-	newCfg = DefaultConfig
+func (cm *Manager) loadConfigFile() (newCfg Config, err error) {
+	newCfg = DefaultConfig()
 	level.Debug(cm.logger).Log("msg", "read file", "file", cm.configFile)
 	file, err := ioutil.ReadFile(cm.configFile)
 	if err != nil {
@@ -168,7 +218,7 @@ func findFiles(patFiles []string) (files []string, err error) {
 	return
 }
 
-func (cm *ConfigManager) loadClientsConfigFiles(newCfg Config) (Config, error) {
+func (cm *Manager) loadClientsConfigFiles(newCfg Config) (Config, error) {
 	level.Debug(cm.logger).Log("msg", "try to find clients config files", "patterns", fmt.Sprint(newCfg.ClientsFiles))
 	files, err := findFiles(newCfg.ClientsFiles)
 	if err != nil {
@@ -201,7 +251,7 @@ func (cm *ConfigManager) loadClientsConfigFiles(newCfg Config) (Config, error) {
 	return newCfg, nil
 }
 
-func (cm *ConfigManager) loadCredsFiles(newCfg Config) (Config, error) {
+func (cm *Manager) loadCredsFiles(newCfg Config) (Config, error) {
 	for id, clientConfig := range newCfg.Clients {
 		// read base64 files and copy to []Base64
 		if len(clientConfig.Auth.Basic.Files) > 0 {
@@ -226,7 +276,7 @@ func (cm *ConfigManager) loadCredsFiles(newCfg Config) (Config, error) {
 	return newCfg, nil
 }
 
-func (cm *ConfigManager) readCredsFiles(patFiles []string) ([]string, error) {
+func (cm *Manager) readCredsFiles(patFiles []string) ([]string, error) {
 	filesContent := make([]string, 0)
 	files, err := findFiles(patFiles)
 	if err != nil {
@@ -243,30 +293,4 @@ func (cm *ConfigManager) readCredsFiles(patFiles []string) ([]string, error) {
 	}
 
 	return filesContent, nil
-}
-
-func (c *ServerConfig) String() string {
-	b, err := yaml.Marshal(c)
-	if err != nil {
-		return fmt.Sprintf("<error creating config string: %s>", err)
-	}
-	return string(b)
-}
-
-func (c *AuthSchema) String() string {
-	result := ""
-
-	if c.Header {
-		result = fmt.Sprintf("%s header: true \n", result)
-	}
-	if c.Basic.User != "" && c.Basic.Password != "" {
-		result = fmt.Sprintf("%s auth basic user password: true \n", result)
-	}
-	if len(c.Basic.Base64) > 0 {
-		result = fmt.Sprintf("%s auth basic base64: %d \n", result, len(c.Basic.Base64))
-	}
-	if len(c.Bearer.Tokens) > 0 {
-		result = fmt.Sprintf("%s auth bearer tokens: %d \n", result, len(c.Bearer.Tokens))
-	}
-	return result
 }
