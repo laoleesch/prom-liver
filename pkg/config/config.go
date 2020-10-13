@@ -225,6 +225,7 @@ func (cm *Manager) loadClientsConfigFiles(newCfg Config) (Config, error) {
 		return newCfg, errors.Wrapf(err, "error finding clients config files")
 	}
 	if len(files) == 0 {
+		level.Debug(cm.logger).Log("msg", "didn't find clients config files", "patterns", fmt.Sprint(newCfg.ClientsFiles))
 		return newCfg, nil
 	}
 

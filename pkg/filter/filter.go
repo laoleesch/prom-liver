@@ -9,6 +9,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	remote "github.com/laoleesch/prom-liver/pkg/remote"
 )
 
 // Manager describe one filter map (client id: filters)
@@ -17,18 +19,22 @@ type Manager struct {
 	matchMemMap  map[string][][]*labels.Matcher
 	injectMemMap map[string][]*labels.Matcher
 	filterMemMap map[string][][]*labels.Matcher
-	logger       kitlog.Logger
-	mtx          sync.RWMutex
+
+	remoteManager *remote.Manager
+	logger        kitlog.Logger
+	mtx           sync.RWMutex
 }
 
 // NewManager creates new instance
-func NewManager(l *kitlog.Logger) *Manager {
+func NewManager(l *kitlog.Logger, rmp *remote.Manager) *Manager {
 	fm := &Manager{
 		idHeaderName: "",
 		matchMemMap:  make(map[string][][]*labels.Matcher),
 		injectMemMap: make(map[string][]*labels.Matcher),
 		filterMemMap: make(map[string][][]*labels.Matcher),
-		logger:       *l,
+
+		remoteManager: rmp,
+		logger:        *l,
 	}
 	return fm
 }
@@ -109,12 +115,23 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	fm.injectMemMap = manager.injectMemMap
 	fm.filterMemMap = manager.filterMemMap
 
+	fm.remoteManager = manager.remoteManager
+
 	return nil
 }
 
-// FilterQuery filter query parameter
-func (fm *Manager) FilterQuery(parameter string, h http.Handler) http.Handler {
+// FilterMatch filter []match requests
+func (fm *Manager) FilterMatch() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fm.FilterQuery()
+
+	})
+}
+
+// FilterQuery filter query parameter
+func (fm *Manager) FilterQuery() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parameter := "query"
 
 		rID := r.Header.Get(fm.idHeaderName)
 		if rID == "" {
@@ -129,7 +146,12 @@ func (fm *Manager) FilterQuery(parameter string, h http.Handler) http.Handler {
 			return
 		}
 
-		filteredQueries, err := fm.labelsParseAndFilter(r.Form[parameter], rID)
+		params := r.Form[parameter]
+		if len(params) == 0 {
+			params = []string{"{__name__!=''}"}
+		}
+
+		filteredQueries, err := fm.labelsParseAndFilter(params, rID)
 		if err != nil {
 			level.Warn(fm.logger).Log("msg", "error on parse and filter query", "id", rID, "err", err)
 		}
@@ -148,7 +170,8 @@ func (fm *Manager) FilterQuery(parameter string, h http.Handler) http.Handler {
 				q.Add(parameter, i)
 			}
 			r.URL.RawQuery = q.Encode()
-			h.ServeHTTP(w, r)
+			fm.remoteManager.ServeReverseProxy(w, r)
+			// h.ServeHTTP(w, r)
 			return
 		}
 
@@ -163,6 +186,7 @@ func (fm *Manager) FilterQuery(parameter string, h http.Handler) http.Handler {
 
 func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([][]string, error) {
 	filteredQueries := make([]string, 0)
+
 	level.Debug(fm.logger).Log("msg", "request sets", "id", rID, "value", fmt.Sprintf("%v", queries))
 	for _, s := range queries {
 		expr, err := promql.ParseExpr(s)
@@ -201,8 +225,7 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([][]strin
 					return nil, err
 				}
 
-				s = expr.String()
-				subqueries = append(subqueries, s)
+				subqueries = append(subqueries, expr.String())
 			}
 			result = append(result, subqueries)
 		}

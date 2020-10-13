@@ -9,8 +9,6 @@ import (
 	"fmt"
 	stdlog "log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -23,11 +21,10 @@ import (
 	"github.com/pkg/errors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
-	"crypto/tls"
-
-	config "github.com/laoleesch/prom-liver/internal/config"
 	auth "github.com/laoleesch/prom-liver/pkg/auth"
+	config "github.com/laoleesch/prom-liver/pkg/config"
 	filter "github.com/laoleesch/prom-liver/pkg/filter"
+	remote "github.com/laoleesch/prom-liver/pkg/remote"
 )
 
 var (
@@ -47,6 +44,7 @@ var (
 	// managers
 	cmp *config.Manager
 	amp *auth.Manager
+	rmp *remote.Manager
 	fmp *filter.Manager
 )
 
@@ -64,7 +62,8 @@ func main() {
 	// Init config
 	Cfg = config.DefaultConfig()
 	amp = auth.NewManager(&logger)
-	fmp = filter.NewManager(&logger)
+	rmp = remote.NewManager(&logger)
+	fmp = filter.NewManager(&logger, rmp)
 
 	cmp, err := config.New(*configFile, &logger)
 	if err != nil {
@@ -112,26 +111,29 @@ func main() {
 
 	// run handlers
 	r := mux.NewRouter()
-	r = r.Methods("GET").Subrouter()
+	api := r.PathPrefix("/api/v1").Subrouter()
+	federate := r.PathPrefix("/federate").Subrouter()
 	if Cfg.Web.Auth {
-		r.Use(amp.CheckAuth)
+		api.Use(amp.CheckAuth)
+		federate.Use(amp.CheckAuth)
 	}
 
 	if Cfg.Web.Handlers.API {
-		r.Handle("/api/v1/series", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Remote.URL))).Methods("GET")
+		api.Handle("/series", fmp.FilterMatch()).Methods("GET")
 		level.Info(logger).Log("server.uri", "/api/v1/series", "server.uri.methods", "GET")
-		r.Handle("/api/v1/query", fmp.FilterQuery("query", serveReverseProxy(Cfg.Remote.URL))).Methods("GET")
+		api.Handle("/query", fmp.FilterQuery()).Methods("GET")
 		level.Info(logger).Log("server.uri", "/api/v1/query", "server.uri.methods", "GET")
-		r.Handle("/api/v1/query_range", fmp.FilterQuery("query", serveReverseProxy(Cfg.Remote.URL))).Methods("GET")
+		api.Handle("/query_range", fmp.FilterQuery()).Methods("GET")
 		level.Info(logger).Log("server.uri", "/api/v1/query_range", "server.uri.methods", "GET")
 	}
 	if Cfg.Web.Handlers.Federate {
-		r.Handle("/federate", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Remote.URL))).Methods("GET")
+		federate.Handle("", fmp.FilterMatch()).Methods("GET")
+		level.Info(logger).Log("server.uri", "/federate", "server.uri.methods", "GET")
 	}
 	if Cfg.Web.Handlers.APIVMLabels {
-		r.Handle("/api/v1/label/{label}/values", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Remote.URL))).Methods("GET")
-		level.Info(logger).Log("server.uri", "/api/v1/label/*/valuese", "server.uri.methods", "GET")
-		r.Handle("/api/v1/labels", fmp.FilterQuery("match[]", serveReverseProxy(Cfg.Remote.URL))).Methods("GET")
+		api.Handle("/label/{label}/values", fmp.FilterMatch()).Methods("GET")
+		level.Info(logger).Log("server.uri", "/api/v1/label/*/values", "server.uri.methods", "GET")
+		api.Handle("/labels", fmp.FilterMatch()).Methods("GET")
 		level.Info(logger).Log("server.uri", "/api/v1/labels", "server.uri.methods", "GET")
 	}
 
@@ -207,7 +209,21 @@ func reloadConfig(cmp *config.Manager) error {
 		}
 	}
 
-	newFmp := filter.NewManager(&logger)
+	newRmp := remote.NewManager(&logger)
+	headers := make(map[string]string, 0)
+	if Cfg.Remote.Auth.User != "" && Cfg.Remote.Auth.Password != "" {
+		headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(Cfg.Remote.Auth.User)) +
+			":" + base64.StdEncoding.EncodeToString([]byte(Cfg.Remote.Auth.Password))
+	}
+	if Cfg.Remote.Auth.Token != "" {
+		headers["Authorization"] = "Bearer " + Cfg.Remote.Auth.Token
+	}
+	err = newRmp.ApplyConfig(cfg.Remote.URL, cfg.Remote.TLS.Verify, headers)
+	if err != nil {
+		return errors.Wrapf(err, "error create new remote config")
+	}
+
+	newFmp := filter.NewManager(&logger, newRmp)
 	matchMap, injectMap, filterMap, err := config.ExtractFilterMap(&cfg)
 	if err != nil {
 		return errors.Wrapf(err, "error extracting filter map from config")
@@ -217,7 +233,7 @@ func reloadConfig(cmp *config.Manager) error {
 		return errors.Wrapf(err, "error create new filter config")
 	}
 
-	// finally apply all
+	// finally apply all (todo)
 
 	Cfg = cfg
 
@@ -225,39 +241,16 @@ func reloadConfig(cmp *config.Manager) error {
 	if err != nil {
 		return errors.Wrapf(err, "error apply new auth config")
 	}
+	err = rmp.CopyConfig(newRmp)
+	if err != nil {
+		return errors.Wrapf(err, "error apply new remote config")
+	}
 	err = fmp.CopyConfig(newFmp)
 	if err != nil {
 		return errors.Wrapf(err, "error apply new filter config")
 	}
 
 	return nil
-}
-
-// reverse proxy
-func serveReverseProxy(target string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		if !Cfg.Remote.TLS.Verify {
-			http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		}
-
-		url, _ := url.Parse(target)
-		proxy := httputil.NewSingleHostReverseProxy(url)
-		r.URL.Host = url.Host
-		r.URL.Scheme = url.Scheme
-		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
-		if Cfg.Remote.Auth.User != "" && Cfg.Remote.Auth.Password != "" {
-			r.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(Cfg.Remote.Auth.User))+
-				":"+base64.StdEncoding.EncodeToString([]byte(Cfg.Remote.Auth.Password)))
-		}
-		if Cfg.Remote.Auth.Token != "" {
-			r.Header.Set("Authorization", "Bearer "+Cfg.Remote.Auth.Token)
-		}
-		r.Host = url.Host
-		r.RequestURI = url.EscapedPath() + r.RequestURI
-		level.Debug(logger).Log("send uri", fmt.Sprintf("%v", r))
-		proxy.ServeHTTP(w, r)
-	})
 }
 
 func reloadConfigHandler() http.Handler {
