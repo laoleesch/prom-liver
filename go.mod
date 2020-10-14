@@ -7,6 +7,8 @@ require (
 	github.com/go-kit/kit v0.9.0
 	github.com/gorilla/mux v1.7.3
 	github.com/pkg/errors v0.8.1
+	github.com/prometheus/client_golang v1.1.0
+	github.com/prometheus/common v0.6.0
 	github.com/prometheus/prometheus v2.12.0+incompatible
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.2.2

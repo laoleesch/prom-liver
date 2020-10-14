@@ -1,9 +1,12 @@
 package filter
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/prometheus/common/model"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -120,10 +123,40 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	return nil
 }
 
-// FilterMatch filter []match requests
+// FilterMatch filter requests with multiple []match through reverse-proxy
 func (fm *Manager) FilterMatch() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fm.FilterQuery()
+		rID := r.Header.Get(fm.idHeaderName)
+		if rID == "" {
+			http.Error(w, fmt.Sprintf("ERROR: Empty header %v", fm.idHeaderName), http.StatusBadRequest)
+			level.Warn(fm.logger).Log("msg", "empty header in filter request", "value", fm.idHeaderName)
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, fmt.Sprintf("ERROR: error parsing form values: %v", err), http.StatusBadRequest)
+			level.Warn(fm.logger).Log("msg", "cannot parse form values", "id", rID, "err", err)
+			return
+		}
+
+		params := r.Form["match[]"]
+		if len(params) == 0 {
+			params = []string{"{__name__!=''}"}
+		}
+
+		filteredQueries, err := fm.labelsParseAndFilter(params, rID)
+		if err != nil {
+			level.Warn(fm.logger).Log("msg", "error on parse and filter query", "id", rID, "err", err)
+		}
+
+		q := r.URL.Query()
+		q.Del("match[]")
+		r.Form.Del("match[]")
+		for _, i := range filteredQueries {
+			q.Add("match[]", i)
+		}
+		r.URL.RawQuery = q.Encode()
+		fm.remoteManager.ServeReverseProxy(w, r)
 
 	})
 }
@@ -131,7 +164,6 @@ func (fm *Manager) FilterMatch() http.Handler {
 // FilterQuery filter query parameter
 func (fm *Manager) FilterQuery() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		parameter := "query"
 
 		rID := r.Header.Get(fm.idHeaderName)
 		if rID == "" {
@@ -146,7 +178,7 @@ func (fm *Manager) FilterQuery() http.Handler {
 			return
 		}
 
-		params := r.Form[parameter]
+		params := r.Form["query"]
 		if len(params) == 0 {
 			params = []string{"{__name__!=''}"}
 		}
@@ -156,35 +188,50 @@ func (fm *Manager) FilterQuery() http.Handler {
 			level.Warn(fm.logger).Log("msg", "error on parse and filter query", "id", rID, "err", err)
 		}
 
-		if len(filteredQueries) == 1 {
-			if len(filteredQueries[0]) == 0 && len(fm.matchMemMap[rID]) > 0 {
-				http.Error(w, fmt.Sprintf("Wrong query. You should use one of these sets %v", fm.matchMemMap[rID]), http.StatusForbidden)
-				level.Warn(fm.logger).Log("msg", "filter result is empty", "id", rID, "value", fmt.Sprintf("%v", r.Form["match[]"]))
-				return
-			}
+		level.Debug(fm.logger).Log("msg", "got filters:", "id", rID, "value", fmt.Sprintf("%v", filteredQueries))
 
-			q := r.URL.Query()
-			q.Del(parameter)
-			r.Form.Del(parameter)
-			for _, i := range filteredQueries[0] {
-				q.Add(parameter, i)
+		// ctx := r.Context()
+
+		// data := make([]remote.APIResponse, len(filteredQueries))
+		var mergedData, data remote.APIResponse
+		var resultType model.ValueType
+		var result []interface{}
+		q := r.URL.Query()
+		for _, subq := range filteredQueries {
+			q.Set("query", subq)
+			// err = fm.remoteManager.FetchData(ctx, r.URL.EscapedPath(), q, &data[i])
+			data, err = fm.remoteManager.FetchResult(r.URL.EscapedPath(), q)
+			if err != nil {
+				level.Error(fm.logger).Log("msg", "error getting data", "id", rID, "err", err)
 			}
-			r.URL.RawQuery = q.Encode()
-			fm.remoteManager.ServeReverseProxy(w, r)
-			// h.ServeHTTP(w, r)
-			return
+			resultType = data.Data.Type
+			switch data.Data.Type {
+			case model.ValMatrix, model.ValVector:
+				result = append(result, data.Data.Result.([]interface{})...)
+			case model.ValScalar, model.ValString:
+				mergedData = data
+			}
+		}
+		mergedData = remote.APIResponse{
+			Status: "success",
+			Data: remote.QueryResult{
+				Type:   resultType,
+				Result: result,
+			},
 		}
 
-		// lets try to combine...
-		// fm.mergeQueries(filteredQueries, h)
-		for queries := range filteredQueries {
-			level.Debug(fm.logger).Log("msg", "got filters:", "id", rID, "value", fmt.Sprintf("%v", queries))
+		responseBytes, err := json.Marshal(mergedData)
+		_, err = w.Write(responseBytes)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("ERROR: error send data: %v", err), http.StatusInternalServerError)
+			level.Error(fm.logger).Log("msg", "error send data", "id", rID, "err", err)
+			return
 		}
 
 	})
 }
 
-func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([][]string, error) {
+func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string, error) {
 	filteredQueries := make([]string, 0)
 
 	level.Debug(fm.logger).Log("msg", "request sets", "id", rID, "value", fmt.Sprintf("%v", queries))
@@ -210,7 +257,7 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([][]strin
 	}
 
 	// yet another stupid way =)
-	result := make([][]string, 0)
+	result := make([]string, 0)
 
 	if len(fm.filterMemMap[rID]) > 0 {
 		for _, s := range filteredQueries {
@@ -227,10 +274,10 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([][]strin
 
 				subqueries = append(subqueries, expr.String())
 			}
-			result = append(result, subqueries)
+			result = append(result, subqueries...)
 		}
 	} else {
-		result = append(result, filteredQueries)
+		result = append(result, filteredQueries...)
 	}
 
 	return result, nil

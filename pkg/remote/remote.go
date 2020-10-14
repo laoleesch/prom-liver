@@ -2,7 +2,10 @@ package remote
 
 import (
 	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -11,13 +14,33 @@ import (
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/prometheus/common/model"
 )
+
+// APIResponse json
+type APIResponse struct {
+	Status    string      `json:"status"`
+	Data      QueryResult `json:"data,omitempty"`
+	ErrorType string      `json:"errorType,omitempty"`
+	Error     string      `json:"error,omitempty"`
+	Warnings  []string    `json:"warnings,omitempty"`
+}
+
+// QueryResult contains result data for a query.
+type QueryResult struct {
+	Type   model.ValueType `json:"resultType"`
+	Result interface{}     `json:"result"`
+
+	// The decoded value.
+	v model.Value
+}
 
 // Manager describe set of auth maps (auth: id)
 type Manager struct {
 	url     *url.URL
 	Client  http.Client
-	headers map[string]string
+	headers http.Header
 
 	logger kitlog.Logger
 	mtx    sync.RWMutex
@@ -36,7 +59,7 @@ func NewManager(l *kitlog.Logger) *Manager {
 	return &Manager{
 		url:     defurl,
 		Client:  client,
-		headers: make(map[string]string, 0),
+		headers: make(http.Header),
 		logger:  *l,
 	}
 }
@@ -60,7 +83,10 @@ func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, headers map[string
 		Transport: tr,
 	}
 
-	rm.headers = headers
+	rm.headers = make(http.Header)
+	for k, v := range headers {
+		rm.headers.Add(k, v)
+	}
 
 	return nil
 }
@@ -85,13 +111,52 @@ func (rm *Manager) ServeReverseProxy(w http.ResponseWriter, r *http.Request) {
 	proxy := httputil.NewSingleHostReverseProxy(rm.url)
 	r.URL.Host = rm.url.Host
 	r.URL.Scheme = rm.url.Scheme
-	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
-	for k, v := range rm.headers {
-		r.Header.Set(k, v)
-	}
+	r.Header = rm.headers
 	r.Host = rm.url.Host
 	r.RequestURI = rm.url.EscapedPath() + r.RequestURI // not sure
 	level.Debug(rm.logger).Log("send uri", fmt.Sprintf("%v", r))
 	proxy.ServeHTTP(w, r)
 	// })
+}
+
+// FetchResult serve r
+func (rm *Manager) FetchResult(path string, query url.Values) (result APIResponse, err error) {
+
+	result = APIResponse{Status: "error"}
+
+	targetURL := *rm.url
+	targetURL.RawPath = path
+	targetURL.RawQuery = query.Encode()
+	targetURL.Path = path
+
+	req := http.Request{
+		Method:     "GET",
+		URL:        &targetURL,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     rm.headers,
+		Host:       targetURL.Host,
+	}
+	resp, err := rm.Client.Do(&req)
+	if err != nil {
+		return result, err
+	}
+	defer resp.Body.Close()
+
+	if !(resp.StatusCode >= 200 && resp.StatusCode < 300) {
+		return result, errors.New("unexpected HTTP status on " + resp.Request.URL.String() + ", rm.url,: " + fmt.Sprintf("%v", resp.StatusCode))
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return result, err
+	}
+
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return result, err
+	}
+
+	return result, nil
+
 }
