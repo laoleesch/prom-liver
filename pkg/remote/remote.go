@@ -37,10 +37,13 @@ func NewManager(l *kitlog.Logger) *Manager {
 		Timeout:   10 * time.Second,
 		Transport: tr,
 	}
+
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/x-www-form-urlencoded")
 	return &Manager{
 		url:     defurl,
 		Client:  client,
-		headers: make(http.Header),
+		headers: headers,
 		logger:  *l,
 	}
 }
