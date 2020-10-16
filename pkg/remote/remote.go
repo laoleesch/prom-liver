@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -14,27 +15,7 @@ import (
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-
-	"github.com/prometheus/common/model"
 )
-
-// APIResponse json
-type APIResponse struct {
-	Status    string      `json:"status"`
-	Data      QueryResult `json:"data,omitempty"`
-	ErrorType string      `json:"errorType,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	Warnings  []string    `json:"warnings,omitempty"`
-}
-
-// QueryResult contains result data for a query.
-type QueryResult struct {
-	Type   model.ValueType `json:"resultType"`
-	Result interface{}     `json:"result"`
-
-	// The decoded value.
-	v model.Value
-}
 
 // Manager describe set of auth maps (auth: id)
 type Manager struct {
@@ -120,7 +101,10 @@ func (rm *Manager) ServeReverseProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 // FetchResult serve r
-func (rm *Manager) FetchResult(path string, query url.Values) (result APIResponse, err error) {
+func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Values) (result APIResponse, err error) {
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
 	result = APIResponse{Status: "error"}
 

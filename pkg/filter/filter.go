@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 
 	kitlog "github.com/go-kit/kit/log"
@@ -166,18 +167,18 @@ func (fm *Manager) FilterQuery() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		rID := r.Header.Get(fm.idHeaderName)
+		ctx := r.Context()
+
 		if rID == "" {
 			http.Error(w, fmt.Sprintf("ERROR: Empty header %v", fm.idHeaderName), http.StatusBadRequest)
 			level.Warn(fm.logger).Log("msg", "empty header in filter request", "value", fm.idHeaderName)
 			return
 		}
-
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, fmt.Sprintf("ERROR: error parsing form values: %v", err), http.StatusBadRequest)
 			level.Warn(fm.logger).Log("msg", "cannot parse form values", "id", rID, "err", err)
 			return
 		}
-
 		params := r.Form["query"]
 		if len(params) == 0 {
 			params = []string{"{__name__!=''}"}
@@ -185,43 +186,35 @@ func (fm *Manager) FilterQuery() http.Handler {
 
 		filteredQueries, err := fm.labelsParseAndFilter(params, rID)
 		if err != nil {
-			level.Warn(fm.logger).Log("msg", "error on parse and filter query", "id", rID, "err", err)
+			http.Error(w, remote.ErrorAPIResponse(v1.ErrBadData, err).String(), http.StatusBadRequest)
+			return
 		}
 
 		level.Debug(fm.logger).Log("msg", "got filters:", "id", rID, "value", fmt.Sprintf("%v", filteredQueries))
 
-		// ctx := r.Context()
-
-		// data := make([]remote.APIResponse, len(filteredQueries))
 		var mergedData, data remote.APIResponse
-		var resultType model.ValueType
 		var result []interface{}
 		q := r.URL.Query()
 		for _, subq := range filteredQueries {
 			q.Set("query", subq)
-			// err = fm.remoteManager.FetchData(ctx, r.URL.EscapedPath(), q, &data[i])
-			data, err = fm.remoteManager.FetchResult(r.URL.EscapedPath(), q)
+			data, err = fm.remoteManager.FetchResult(ctx, r.URL.EscapedPath(), q)
 			if err != nil {
 				level.Error(fm.logger).Log("msg", "error getting data", "id", rID, "err", err)
 			}
-			resultType = data.Data.Type
+			mergedData = data
 			switch data.Data.Type {
 			case model.ValMatrix, model.ValVector:
 				result = append(result, data.Data.Result.([]interface{})...)
 			case model.ValScalar, model.ValString:
-				mergedData = data
+				result = data.Data.Result.([]interface{})
 			}
 		}
-		mergedData = remote.APIResponse{
-			Status: "success",
-			Data: remote.QueryResult{
-				Type:   resultType,
-				Result: result,
-			},
+		if len(result) > 0 {
+			mergedData.Data.Result = result
 		}
 
-		responseBytes, err := json.Marshal(mergedData)
-		_, err = w.Write(responseBytes)
+		b, _ := json.Marshal(mergedData)
+		_, err = w.Write(b)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("ERROR: error send data: %v", err), http.StatusInternalServerError)
 			level.Error(fm.logger).Log("msg", "error send data", "id", rID, "err", err)
