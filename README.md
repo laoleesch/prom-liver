@@ -48,18 +48,16 @@ skill -SIGHUP prom-liver
 or PUT/POST request:
 
 ```bash
-curl -X POST http://localhost:8888/-/config/reload
+curl -X POST http://localhost:8080/-/reload
 ```
 
 ## TODO
 
 - [ ] /metrics
 - [ ] tests =))
-- [ ] more tls options for backend
-- [ ] refactoring
-- [ ] more tests
+- [x] more tls options
 - [ ] not-so-shitty-code-refactoring
-- [ ] tests
 - [ ] htpasswd?
-- [ ] oauth?
 - [ ] deduplication for subqueries?
+- [ ] consul-template + vault example?
+- [ ] passphrase for POST /-/reload

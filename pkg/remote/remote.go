@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,7 +50,7 @@ func NewManager(l *kitlog.Logger) *Manager {
 }
 
 // ApplyConfig apply new config
-func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, headers map[string]string) error {
+func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, caCert []byte, headers map[string]string) error {
 
 	rm.mtx.Lock()
 	defer rm.mtx.Unlock()
@@ -61,7 +62,17 @@ func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, headers map[string
 	}
 	rm.url = newurl
 
-	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: tlsVerify}}
+	tlsConfig := &tls.Config{InsecureSkipVerify: tlsVerify}
+	if len(caCert) > 0 {
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		tlsConfig = &tls.Config{
+			InsecureSkipVerify: tlsVerify,
+			RootCAs:            caCertPool,
+		}
+	}
+
+	tr := &http.Transport{TLSClientConfig: tlsConfig}
 	rm.Client = http.Client{
 		Timeout:   10 * time.Second,
 		Transport: tr,

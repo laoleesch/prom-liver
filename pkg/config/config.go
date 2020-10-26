@@ -26,6 +26,10 @@ type WebConfig struct {
 	HeaderName string `yaml:"header,omitempty"`
 	CheckMode  bool   `yaml:"check_only,omitempty"`
 	Handlers   WebHandlersConfig
+	TLS        struct {
+		Crt string `yaml:"crt,omitempty"`
+		Key string `yaml:"key,omitempty"`
+	} `yaml:"tls,omitempty"`
 }
 
 // WebHandlersConfig handlers configs
@@ -63,7 +67,9 @@ func (c RemoteAuthConfig) String() string {
 
 // RemoteTLSConfig includes TLS configs for remote PromQL service
 type RemoteTLSConfig struct {
-	Verify bool `yaml:"verify,omitempty"`
+	Verify bool   `yaml:"verify,omitempty"`
+	CAFile string `yaml:"ca,omitempty"`
+	CAData []byte
 }
 
 //Clients includes configuration for each client
@@ -203,6 +209,14 @@ func (cm *Manager) loadConfigFile() (newCfg Config, err error) {
 	err = yaml.UnmarshalStrict(file, &newCfg)
 	if err != nil {
 		return newCfg, errors.Wrapf(err, "cannot parse config file")
+	}
+
+	if len(newCfg.Remote.TLS.CAFile) > 0 {
+		cert, err := ioutil.ReadFile(newCfg.Remote.TLS.CAFile)
+		if err != nil {
+			return newCfg, errors.Wrapf(err, "cannot read remote TLS CA cert file %v", newCfg.Remote.TLS.CAFile)
+		}
+		newCfg.Remote.TLS.CAData = cert
 	}
 
 	return

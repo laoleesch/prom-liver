@@ -138,8 +138,8 @@ func main() {
 	}
 
 	if Cfg.Web.Handlers.ConfigReload {
-		r.Handle("/-/config/reload", reloadConfigHandler()).Methods("POST", "PUT")
-		level.Info(logger).Log("server.uri", "/-/config/reload", "server.uri.methods", "POST,PUT")
+		r.Handle("/-/reload", reloadConfigHandler()).Methods("POST", "PUT")
+		level.Info(logger).Log("server.uri", "/-/reload", "server.uri.methods", "POST,PUT")
 	}
 
 	srv := &http.Server{
@@ -150,7 +150,13 @@ func main() {
 	}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		var err error
+		if len(Cfg.Web.TLS.Crt)+len(Cfg.Web.TLS.Key) > 0 {
+			err = srv.ListenAndServeTLS(Cfg.Web.TLS.Crt, Cfg.Web.TLS.Key)
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			level.Error(logger).Log("msg", "main http listener error", "err", err)
 			os.Exit(2)
 		}
@@ -218,7 +224,7 @@ func reloadConfig(cmp *config.Manager) error {
 	if Cfg.Remote.Auth.Token != "" {
 		headers["Authorization"] = "Bearer " + Cfg.Remote.Auth.Token
 	}
-	err = newRmp.ApplyConfig(cfg.Remote.URL, cfg.Remote.TLS.Verify, headers)
+	err = newRmp.ApplyConfig(cfg.Remote.URL, cfg.Remote.TLS.Verify, cfg.Remote.TLS.CAData, headers)
 	if err != nil {
 		return errors.Wrapf(err, "error create new remote config")
 	}
