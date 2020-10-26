@@ -1,7 +1,0 @@
-'tester':
-  auth:
-    bearer:
-      tokens: 
-        - 'TESTTEST3'
-  match:
-    - 'up{project="tester", env="test"}'

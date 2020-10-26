@@ -24,6 +24,7 @@ type Config struct {
 type WebConfig struct {
 	Auth       bool   `yaml:"auth,omitempty"`
 	HeaderName string `yaml:"header,omitempty"`
+	CheckMode  bool   `yaml:"check_only,omitempty"`
 	Handlers   WebHandlersConfig
 }
 
@@ -49,7 +50,7 @@ type RemoteAuthConfig struct {
 	Token    string `yaml:"token,omitempty"`
 }
 
-func (c *RemoteAuthConfig) String() string {
+func (c RemoteAuthConfig) String() string {
 	result := ""
 	if c.Password != "" || c.User != "" {
 		result = fmt.Sprintf("%s basic: true \n", result)
@@ -75,7 +76,6 @@ type ClientID string
 type ClientConfig struct {
 	// ID    string     `yaml:"id"`
 	Auth   AuthSchema `yaml:"auth,omitempty"`
-	Match  []string   `yaml:"match,omitempty"`
 	Inject string     `yaml:"inject,omitempty"`
 	Filter []string   `yaml:"filter,omitempty"`
 }
@@ -101,7 +101,7 @@ type AuthSchemaBearer struct {
 	Files  []string `yaml:"files,omitempty"`
 }
 
-func (c *AuthSchema) String() string {
+func (c AuthSchema) String() string {
 	result := ""
 
 	if c.Header {
@@ -146,6 +146,7 @@ func DefaultConfig() Config {
 		Web: WebConfig{
 			Auth:       true,
 			HeaderName: "X-Prom-Liver-Id",
+			CheckMode:  false,
 			Handlers: WebHandlersConfig{
 				API:          true,
 				Federate:     true,

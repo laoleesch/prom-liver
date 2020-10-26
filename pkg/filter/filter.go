@@ -20,9 +20,9 @@ import (
 // Manager describe one filter map (client id: filters)
 type Manager struct {
 	idHeaderName string
-	matchMemMap  map[string][][]*labels.Matcher
 	injectMemMap map[string][]*labels.Matcher
 	filterMemMap map[string][][]*labels.Matcher
+	checkOnly    bool
 
 	remoteManager *remote.Manager
 	logger        kitlog.Logger
@@ -33,9 +33,9 @@ type Manager struct {
 func NewManager(l *kitlog.Logger, rmp *remote.Manager) *Manager {
 	fm := &Manager{
 		idHeaderName: "",
-		matchMemMap:  make(map[string][][]*labels.Matcher),
 		injectMemMap: make(map[string][]*labels.Matcher),
 		filterMemMap: make(map[string][][]*labels.Matcher),
+		checkOnly:    false,
 
 		remoteManager: rmp,
 		logger:        *l,
@@ -44,30 +44,12 @@ func NewManager(l *kitlog.Logger, rmp *remote.Manager) *Manager {
 }
 
 // ApplyConfig apply new config
-func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string, injectMap map[string]string, filterMap map[string][]string) error {
+func (fm *Manager) ApplyConfig(idHeaderName string, injectMap map[string]string, filterMap map[string][]string, checkOnly bool) error {
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
-	if (len(matchMap)+len(injectMap)+len(filterMap) == 0) || idHeaderName == "" {
+	if (len(injectMap)+len(filterMap) == 0) || idHeaderName == "" {
 		return fmt.Errorf("wrong filter config")
-	}
-
-	if len(matchMap) > 0 {
-		matchMemMap := make(map[string][][]*labels.Matcher)
-		var matcherSets [][]*labels.Matcher
-		for id, matches := range matchMap {
-			matcherSets = make([][]*labels.Matcher, 0)
-			for _, s := range matches {
-				matchers, err := promql.ParseMetricSelector(s)
-				if err != nil {
-					return err
-				}
-				matcherSets = append(matcherSets, matchers)
-			}
-			matchMemMap[id] = matcherSets
-			level.Debug(fm.logger).Log("client.id", id, "matchset", fmt.Sprintf("%v", matchMemMap[id]))
-		}
-		fm.matchMemMap = matchMemMap
 	}
 
 	if len(injectMap) > 0 {
@@ -102,6 +84,7 @@ func (fm *Manager) ApplyConfig(idHeaderName string, matchMap map[string][]string
 	}
 
 	fm.idHeaderName = idHeaderName
+	fm.checkOnly = checkOnly
 	return nil
 }
 
@@ -110,16 +93,16 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	fm.mtx.Lock()
 	defer fm.mtx.Unlock()
 
-	if (len(manager.matchMemMap)+len(manager.injectMemMap)+len(manager.filterMemMap) == 0) || manager.idHeaderName == "" {
+	if (len(manager.injectMemMap)+len(manager.filterMemMap) == 0) || manager.idHeaderName == "" {
 		return fmt.Errorf("wrong filter config")
 	}
 
 	fm.idHeaderName = manager.idHeaderName
-	fm.matchMemMap = manager.matchMemMap
 	fm.injectMemMap = manager.injectMemMap
 	fm.filterMemMap = manager.filterMemMap
 
 	fm.remoteManager = manager.remoteManager
+	fm.checkOnly = manager.checkOnly
 
 	return nil
 }
@@ -148,6 +131,11 @@ func (fm *Manager) FilterMatch() http.Handler {
 		filteredQueries, err := fm.labelsParseAndFilter(params, rID)
 		if err != nil {
 			level.Warn(fm.logger).Log("msg", "error on parse and filter query", "id", rID, "err", err)
+		}
+		if fm.checkOnly && len(filteredQueries) == 0 {
+			http.Error(w, remote.ErrorAPIResponse(v1.ErrClient, fmt.Errorf("Acces denied. Allowed labels sets: %v", fm.filterMemMap[rID])).String(), http.StatusForbidden)
+			return
+
 		}
 
 		q := r.URL.Query()
@@ -189,8 +177,20 @@ func (fm *Manager) FilterQuery() http.Handler {
 			http.Error(w, remote.ErrorAPIResponse(v1.ErrBadData, err).String(), http.StatusBadRequest)
 			return
 		}
-
 		level.Debug(fm.logger).Log("msg", "got filters:", "id", rID, "value", fmt.Sprintf("%v", filteredQueries))
+
+		if fm.checkOnly && len(filteredQueries) == 0 {
+			http.Error(w, remote.ErrorAPIResponse(v1.ErrClient, fmt.Errorf("Acces denied. Allowed labels sets: %v", fm.filterMemMap[rID])).String(), http.StatusForbidden)
+			return
+
+		} else if len(filteredQueries) == 1 {
+			q := r.URL.Query()
+			r.Form.Del("query")
+			q.Set("query", filteredQueries[0])
+			r.URL.RawQuery = q.Encode()
+			fm.remoteManager.ServeReverseProxy(w, r)
+			return
+		}
 
 		var mergedData, data remote.APIResponse
 		var result []interface{}
@@ -234,46 +234,44 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string,
 			return nil, err
 		}
 		if len(fm.injectMemMap[rID]) > 0 {
-			// lets try just to add injected Matchers
 			if err = promql.Walk(inspector(injectLabels(fm.injectMemMap[rID])), expr, nil); err != nil {
 				return nil, err
 			}
+			s = expr.String()
 		}
-		if len(fm.matchMemMap[rID]) > 0 {
-			if err = promql.Walk(inspector(checkLabels(fm.matchMemMap[rID])), expr, nil); err != nil {
-				level.Debug(fm.logger).Log("msg", "check labels error", "id", rID, "err", err)
+
+		if len(fm.filterMemMap[rID]) > 0 {
+			if err = promql.Walk(inspector(checkLabels(fm.filterMemMap[rID])), expr, nil); err != nil {
+				// if err then not match
+
+				// if check_only then go next
+				if fm.checkOnly {
+					continue
+				}
+
+				// create subquery with injects
+				subqueries := make([]string, 0)
+				for _, inj := range fm.filterMemMap[rID] {
+					expr, err := promql.ParseExpr(s)
+					if err != nil {
+						return nil, err
+					}
+					if err = promql.Walk(inspector(injectLabels(inj)), expr, nil); err != nil {
+						return nil, err
+					}
+					subqueries = append(subqueries, expr.String())
+				}
+				filteredQueries = append(filteredQueries, subqueries...)
 				continue
 			}
 		}
-		s = expr.String()
+
+		// if match or inject only then ok
 		filteredQueries = append(filteredQueries, s)
 	}
 
-	// yet another stupid way =)
-	result := make([]string, 0)
+	return filteredQueries, nil
 
-	if len(fm.filterMemMap[rID]) > 0 {
-		for _, s := range filteredQueries {
-			subqueries := make([]string, 0)
-			for _, inj := range fm.filterMemMap[rID] {
-				expr, err := promql.ParseExpr(s)
-				if err != nil {
-					return nil, err
-				}
-
-				if err = promql.Walk(inspector(injectLabels(inj)), expr, nil); err != nil {
-					return nil, err
-				}
-
-				subqueries = append(subqueries, expr.String())
-			}
-			result = append(result, subqueries...)
-		}
-	} else {
-		result = append(result, filteredQueries...)
-	}
-
-	return result, nil
 }
 
 type inspector func(promql.Node, []promql.Node) error
@@ -335,23 +333,24 @@ func matchIntersection(mr, mm []*labels.Matcher) bool {
 }
 
 func suitMatchers(mri, mmi *labels.Matcher) bool {
-	switch mmi.Type.String() + mri.Type.String() {
-	case "!==":
-		return mmi.Matches(mri.Value)
-	case "=~=":
-		return mmi.Matches(mri.Value)
-	case "=~=~":
-		return mmi.Matches(mri.Value)
-	case "!~=":
-		return mmi.Matches(mri.Value)
-	// case "!~=~":
-	// return mmi.Matches(mri.Value)
-	// case "!~!=":
-	// match, _ := regexp.MatchString(mmi.Value, mri.Value)
-	// return match
-	default:
-		return mri.Name == mmi.Name &&
-			mri.Type == mmi.Type &&
-			mri.Value == mmi.Value
+	if mri.Name == mmi.Name {
+		switch mmi.Type.String() + mri.Type.String() {
+		case "!==":
+			return mmi.Matches(mri.Value)
+		case "=~=":
+			return mmi.Matches(mri.Value)
+		case "=~=~":
+			return mmi.Matches(mri.Value)
+		case "!~=":
+			return mmi.Matches(mri.Value)
+		// case "!~=~":
+		// return mmi.Matches(mri.Value)
+		// case "!~!=":
+		// match, _ := regexp.MatchString(mmi.Value, mri.Value)
+		// return match
+		default:
+			return mri.Type == mmi.Type && mri.Value == mmi.Value
+		}
 	}
+	return false
 }

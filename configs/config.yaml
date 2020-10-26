@@ -3,12 +3,13 @@
 ##################################################
 
 web:
-  auth: true
-  header: 'X-Prom-Liver-Id'
+  auth: true  # if 'true' then it will check basic/bearer and return HTTP 401 or set client id header. If not it will ignore Auth and try to find client id header in request.
+  header: 'X-Prom-Liver-Id' # client id header name
+  check_only: false # if 'true' it will only check labels and return HTTP 403 or work as reverse-proxy
   handlers:
     api: true       # /api/v1/(query|query_range|series)
     federate: true  # /federate
-    labels: true   # for VictoriaMetrics only! don't activate on prometheus! /api/v1/label/{label}/values /api/v1/labels
+    labels: false   # for VictoriaMetrics only! don't activate on prometheus! /api/v1/label/{label}/values /api/v1/labels
     config_reload: true    # POST/PUT on /-/config/reload (reload clients configs)
 
 remote:
@@ -24,31 +25,24 @@ clients_files:
   - "configs/client*"
 
 clients:
-  # 'go-metrics': 
-  #   auth:
-  #     basic:
-  #       user: user1
-  #       password: password1
-  #     header: true
-  #     bearer:
-  #       files:
-  #         - "configs/secret_*"
-  #   match:
-  #     - '{project=~"go-.*"}'
-  #     - 'job{env="test"}'
-  #     - 'up{some=~".*oops.*"}'
-  'cadvisor':
+  'cadvisor': # client id (header value)
     auth:
       basic:
         user: user1
-        password: password1
+        password: password1 # plain password...
       bearer:
         tokens: 
-          - 'TESTTEST'
+          - 'TESTTEST' 
           - 'TESTTEST2'
-    # match:
-    #   - '{env="test"}'
-    # inject: '{project="spep",__name__="net_tcp_attemptfails"}'
+        files:
+          - "configs/secret_*"
+    inject: '{env="test"}'
     filter:
-      - '{name="victoriametrics"}'
-      - '{cadvisorRevision="8949c822"}'
+      - '{project="cadvisor"}'
+      - 'cadvisor_version_info'
+  'some':
+    auth:
+      bearer:
+        tokens:
+          - 'azaza'
+    inject: '{env="prod"}'

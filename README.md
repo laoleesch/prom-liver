@@ -11,12 +11,12 @@ Prometheus API:
 - /api/v1/series
 - /federate
 
-VictoriaMetrics PromQL external API:
+VictoriaMetrics PromQL extended API:
 
 - /api/v1/labels
 - /api/v1/label/{label}/values
 
-Reverse-proxy. Basic / Bearer token auth. Matching labels. YAML config.
+Basic / Bearer token auth. Inject labels, check labels or union inject-subqueries. YAML config.
 
 ## USAGE
 
@@ -30,31 +30,36 @@ docker run -d -p 8080:8080 -v /<PATH>/prom-liver-config:/prom-liver laoleesch/pr
 $ ./prom-liver -h
 usage: prom-liver [<flags>]
 
-ACL for PromQL
-
 Flags:
   -h, --help                  Show context-sensitive help (also try --help-long and --help-man).
-  -l, --loglevel="info"       Log level: debug, info, warning, error
   -c, --config="config.yaml"  Configuration file
+  -l, --loglevel=info         Log filtering level
+  -b, --bind=":8080"          Address to listen on.
 ```
 
 Please look at [config.yaml](https://github.com/laoleesch/prom-liver/blob/master/configs/config.yaml) example
 
-Supports configuration reload at runtime through SIGHUP:
+Supports clients configuration reload at runtime through SIGHUP:
 
 ```bash
 skill -SIGHUP prom-liver
 ```
 
-or PUT/POST request on a separate port:
+or PUT/POST request:
 
 ```bash
-curl -X POST http://localhost:8888/admin/config/reload
+curl -X POST http://localhost:8888/-/config/reload
 ```
 
 ## TODO
 
-- [ ] /liver/metrics
-- [ ] ability to inject labels (with matches also)
-- [ ] usage as auth middleware for nginx/traefik/etc
-- [ ] vault integration (? maybe just an example on consul-template)
+- [ ] /metrics
+- [ ] tests =))
+- [ ] more tls options for backend
+- [ ] refactoring
+- [ ] more tests
+- [ ] not-so-shitty-code-refactoring
+- [ ] tests
+- [ ] htpasswd?
+- [ ] oauth?
+- [ ] deduplication for subqueries?

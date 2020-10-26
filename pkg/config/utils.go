@@ -7,6 +7,7 @@ import (
 	"github.com/laoleesch/prom-liver/pkg/auth"
 )
 
+// ExtractAuthMap converts data from Config struct into auth maps
 func ExtractAuthMap(cfg *Config) (map[int]map[string]string, error) {
 
 	authMemMap := make(map[int]map[string]string)
@@ -76,24 +77,20 @@ func ExtractAuthMap(cfg *Config) (map[int]map[string]string, error) {
 	return authMemMap, nil
 }
 
+// ExtractFilterMap converts data from Config struct into filter maps
 func ExtractFilterMap(cfg *Config) (
-	matchMap map[string][]string,
 	injectMap map[string]string,
 	filterMap map[string][]string,
 	err error) {
 
 	err = nil
 
-	matchMap = make(map[string][]string)
 	injectMap = make(map[string]string)
 	filterMap = make(map[string][]string)
 	for id, c := range cfg.Clients {
-		if len(c.Match)+len(c.Inject)+len(c.Filter) == 0 {
+		if len(c.Inject)+len(c.Filter) == 0 {
 			err = fmt.Errorf("no match or filter or inject config for client id: %v", id)
-			return nil, nil, nil, err
-		}
-		if len(c.Match) > 0 {
-			matchMap[string(id)] = c.Match
+			return nil, nil, err
 		}
 		if len(c.Inject) > 0 {
 			injectMap[string(id)] = c.Inject
