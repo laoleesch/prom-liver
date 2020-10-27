@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	"github.com/prometheus/common/model"
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -192,28 +191,14 @@ func (fm *Manager) FilterQuery() http.Handler {
 			return
 		}
 
-		var mergedData, data remote.APIResponse
-		var result []interface{}
-		q := r.URL.Query()
-		for _, subq := range filteredQueries {
-			q.Set("query", subq)
-			data, err = fm.remoteManager.FetchResult(ctx, r.URL.EscapedPath(), q)
-			if err != nil {
-				level.Error(fm.logger).Log("msg", "error getting data", "id", rID, "err", err)
-			}
-			mergedData = data
-			switch data.Data.Type {
-			case model.ValMatrix, model.ValVector:
-				result = append(result, data.Data.Result.([]interface{})...)
-			case model.ValScalar, model.ValString:
-				result = data.Data.Result.([]interface{})
-			}
-		}
-		if len(result) > 0 {
-			mergedData.Data.Result = result
+		mData, err := fm.remoteManager.FetchMultiQueryResult(ctx, r.URL.EscapedPath(), r.URL.Query(), filteredQueries)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("ERROR: error getting data: %v", err), http.StatusInternalServerError)
+			level.Error(fm.logger).Log("msg", "error getting data", "id", rID, "err", err)
+			return
 		}
 
-		b, _ := json.Marshal(mergedData)
+		b, _ := json.Marshal(mData)
 		_, err = w.Write(b)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("ERROR: error send data: %v", err), http.StatusInternalServerError)

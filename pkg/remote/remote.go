@@ -16,6 +16,7 @@ import (
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/common/model"
 )
 
 // Manager describe set of auth maps (auth: id)
@@ -82,6 +83,7 @@ func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, caCert []byte, hea
 	for k, v := range headers {
 		rm.headers.Add(k, v)
 	}
+	rm.headers.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	return nil
 }
@@ -94,6 +96,7 @@ func (rm *Manager) CopyConfig(manager *Manager) error {
 	rm.url = manager.url
 	rm.Client = manager.Client
 	rm.headers = manager.headers
+	rm.headers.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	return nil
 }
@@ -157,4 +160,29 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 
 	return result, nil
 
+}
+
+// FetchMultiQueryResult returns union of subqueries
+func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query url.Values, subqueries []string) (APIResponse, error) {
+	var mData APIResponse
+	var result []interface{}
+	for _, subq := range subqueries {
+		query.Set("query", subq)
+		data, err := rm.FetchResult(ctx, path, query)
+		if err != nil {
+			level.Error(rm.logger).Log("msg", "error getting data", err)
+			return data, err
+		}
+		mData = data
+		switch data.Data.Type {
+		case model.ValMatrix, model.ValVector:
+			result = append(result, data.Data.Result.([]interface{})...)
+		case model.ValScalar, model.ValString:
+			result = data.Data.Result.([]interface{})
+		}
+	}
+	if len(result) > 0 {
+		mData.Data.Result = result
+	}
+	return mData, nil
 }
