@@ -23,21 +23,19 @@ type Manager struct {
 	filterMemMap map[string][][]*labels.Matcher
 	checkOnly    bool
 
-	remoteManager *remote.Manager
-	logger        kitlog.Logger
-	mtx           sync.RWMutex
+	logger kitlog.Logger
+	mtx    sync.RWMutex
 }
 
 // NewManager creates new instance
-func NewManager(l *kitlog.Logger, rmp *remote.Manager) *Manager {
+func NewManager(l *kitlog.Logger) *Manager {
 	fm := &Manager{
 		idHeaderName: "",
 		injectMemMap: make(map[string][]*labels.Matcher),
 		filterMemMap: make(map[string][][]*labels.Matcher),
 		checkOnly:    false,
 
-		remoteManager: rmp,
-		logger:        *l,
+		logger: *l,
 	}
 	return fm
 }
@@ -100,14 +98,13 @@ func (fm *Manager) CopyConfig(manager *Manager) error {
 	fm.injectMemMap = manager.injectMemMap
 	fm.filterMemMap = manager.filterMemMap
 
-	fm.remoteManager = manager.remoteManager
 	fm.checkOnly = manager.checkOnly
 
 	return nil
 }
 
 // FilterMatch filter requests with multiple []match through reverse-proxy
-func (fm *Manager) FilterMatch() http.Handler {
+func (fm *Manager) FilterMatch(rmp *remote.Manager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rID := r.Header.Get(fm.idHeaderName)
 		if rID == "" {
@@ -144,13 +141,13 @@ func (fm *Manager) FilterMatch() http.Handler {
 			q.Add("match[]", i)
 		}
 		r.URL.RawQuery = q.Encode()
-		fm.remoteManager.ServeReverseProxy(w, r)
+		rmp.ServeReverseProxy(w, r)
 
 	})
 }
 
 // FilterQuery filter query parameter
-func (fm *Manager) FilterQuery() http.Handler {
+func (fm *Manager) FilterQuery(rmp *remote.Manager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		rID := r.Header.Get(fm.idHeaderName)
@@ -187,11 +184,11 @@ func (fm *Manager) FilterQuery() http.Handler {
 			r.Form.Del("query")
 			q.Set("query", filteredQueries[0])
 			r.URL.RawQuery = q.Encode()
-			fm.remoteManager.ServeReverseProxy(w, r)
+			rmp.ServeReverseProxy(w, r)
 			return
 		}
 
-		mData, err := fm.remoteManager.FetchMultiQueryResult(ctx, r.URL.EscapedPath(), r.URL.Query(), filteredQueries)
+		mData, err := rmp.FetchMultiQueryResult(ctx, r.URL.EscapedPath(), r.URL.Query(), filteredQueries)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("ERROR: error getting data: %v", err), http.StatusInternalServerError)
 			level.Error(fm.logger).Log("msg", "error getting data", "id", rID, "err", err)
