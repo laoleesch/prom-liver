@@ -61,3 +61,5 @@ curl -X POST http://localhost:8080/-/reload
 - [ ] deduplication for subqueries?
 - [ ] consul-template + vault example?
 - [ ] passphrase for POST /-/reload
+- [ ] promxy->vm labels workaround? [https://github.com/jacksontj/promxy/issues/253](https://github.com/jacksontj/promxy/issues/253)
+- [ ] MetricsQL
