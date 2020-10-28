@@ -63,7 +63,7 @@ func main() {
 	Cfg = config.DefaultConfig()
 	amp = auth.NewManager(&logger)
 	rmp = remote.NewManager(&logger)
-	fmp = filter.NewManager(&logger, rmp)
+	fmp = filter.NewManager(&logger)
 
 	cmp, err := config.New(*configFile, &logger)
 	if err != nil {

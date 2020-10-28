@@ -21,9 +21,6 @@ type APIResponse struct {
 type QueryResult struct {
 	Type   model.ValueType `json:"resultType"`
 	Result interface{}     `json:"result"`
-
-	// The decoded value.
-	v model.Value
 }
 
 // DefaultAPIResponse return default APIResponse success empty
