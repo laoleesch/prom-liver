@@ -9,5 +9,5 @@ RUN cd /src && \
 FROM golang:alpine
 WORKDIR /prom-liver
 COPY --from=build-env /src/prom-liver /usr/bin/
-EXPOSE 8080/tcp 8888/tcp
+EXPOSE 8080/tcp
 ENTRYPOINT [ "/usr/bin/prom-liver" ]

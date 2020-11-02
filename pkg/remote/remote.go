@@ -16,7 +16,27 @@ import (
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+)
+
+const (
+	namespace = "prom_liver"
+	subsystem = "remote"
+)
+
+var (
+	// RemoteRequestDuration is a histogram of latencies for remote data fetch.
+	RemoteRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "duration_seconds",
+			Help:      "A histogram of latencies for remote data fetch.",
+			Buckets:   []float64{0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0},
+		},
+		[]string{"function"},
+	)
 )
 
 // Manager describe set of auth maps (auth: id)
@@ -102,23 +122,25 @@ func (rm *Manager) CopyConfig(manager *Manager) error {
 }
 
 // ServeReverseProxy serve reverse proxy
-// func (rm *Manager) ServeReverseProxy() http.Handler {
 func (rm *Manager) ServeReverseProxy(w http.ResponseWriter, r *http.Request) {
-	// return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	timer := prometheus.NewTimer(RemoteRequestDuration.WithLabelValues("reverse-proxy"))
+	defer timer.ObserveDuration()
 
 	proxy := httputil.NewSingleHostReverseProxy(rm.url)
 	r.URL.Host = rm.url.Host
 	r.URL.Scheme = rm.url.Scheme
 	r.Header = rm.headers
 	r.Host = rm.url.Host
-	r.RequestURI = rm.url.EscapedPath() + r.RequestURI // not sure
+	r.RequestURI = rm.url.EscapedPath() + r.RequestURI
 	level.Debug(rm.logger).Log("send uri", fmt.Sprintf("%v", r))
 	proxy.ServeHTTP(w, r)
-	// })
 }
 
 // FetchResult serve r
 func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Values) (result APIResponse, err error) {
+	timer := prometheus.NewTimer(RemoteRequestDuration.WithLabelValues("single-fetch"))
+	defer timer.ObserveDuration()
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -164,6 +186,9 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 
 // FetchMultiQueryResult returns union of subqueries
 func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query url.Values, subqueries []string) (APIResponse, error) {
+	timer := prometheus.NewTimer(RemoteRequestDuration.WithLabelValues("multi-fetch"))
+	defer timer.ObserveDuration()
+
 	var mData APIResponse
 	var result []interface{}
 	for _, subq := range subqueries {

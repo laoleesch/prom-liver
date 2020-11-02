@@ -19,12 +19,18 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
 	auth "github.com/laoleesch/prom-liver/pkg/auth"
 	config "github.com/laoleesch/prom-liver/pkg/config"
 	filter "github.com/laoleesch/prom-liver/pkg/filter"
 	remote "github.com/laoleesch/prom-liver/pkg/remote"
+)
+
+const (
+	namespace = "prom_liver"
 )
 
 var (
@@ -36,10 +42,16 @@ var (
 	listenAddress = kingpin.Flag("bind", "Address to listen on.").Short('b').Default(":8080").String()
 
 	// Cfg global config
-	Cfg config.Config
-
-	// reload config channel
-	chHTTPReload chan chan error
+	Cfg                 config.Config
+	chHTTPReload        chan chan error
+	configReloadCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "reload_total",
+			Help:      "Total reload config counter.",
+		},
+		[]string{"status"},
+	)
 
 	// managers
 	cmp *config.Manager
@@ -81,6 +93,11 @@ func main() {
 	level.Info(logger).Log("web.header", Cfg.Web.HeaderName)
 	level.Info(logger).Log("remote.url", Cfg.Remote.URL)
 
+	// metrics
+	prometheus.MustRegister(httpReqCounter, httpReqDuration, httpReqResponseSize)
+	prometheus.MustRegister(configReloadCounter)
+	prometheus.MustRegister(remote.RemoteRequestDuration)
+
 	// config reload handler
 	go func() {
 		hup := make(chan os.Signal, 1)
@@ -93,16 +110,20 @@ func main() {
 				level.Info(logger).Log("msg", "got SIGHUP signal")
 				if err := reloadConfig(cmp); err != nil {
 					level.Error(logger).Log("msg", "Error reloading config", "err", err)
+					configReloadCounter.WithLabelValues("error").Inc()
 				} else {
 					level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", *configFile)
+					configReloadCounter.WithLabelValues("success").Inc()
 				}
 			case rc := <-chHTTPReload:
 				level.Info(logger).Log("msg", "got http config reload signal")
 				if err := reloadConfig(cmp); err != nil {
 					level.Error(logger).Log("msg", "Error reloading config", "err", err)
+					configReloadCounter.WithLabelValues("error").Inc()
 					rc <- err
 				} else {
 					level.Info(logger).Log("msg", "Config has been successfully reloaded", "file", *configFile)
+					configReloadCounter.WithLabelValues("success").Inc()
 					rc <- nil
 				}
 			}
@@ -113,6 +134,10 @@ func main() {
 	r := mux.NewRouter()
 	api := r.PathPrefix("/api/v1").Subrouter()
 	federate := r.PathPrefix("/federate").Subrouter()
+
+	api.Use(metricsWrapHandler)
+	federate.Use(metricsWrapHandler)
+
 	if Cfg.Web.Auth {
 		api.Use(amp.CheckAuth)
 		federate.Use(amp.CheckAuth)
@@ -141,6 +166,8 @@ func main() {
 		r.Handle("/-/reload", reloadConfigHandler()).Methods("POST", "PUT")
 		level.Info(logger).Log("server.uri", "/-/reload", "server.uri.methods", "POST,PUT")
 	}
+
+	r.Handle("/metrics", promhttp.Handler())
 
 	srv := &http.Server{
 		Handler:      r,
@@ -270,4 +297,44 @@ func reloadConfigHandler() http.Handler {
 			fmt.Fprintf(w, "config has been successfully reloaded\n")
 		}
 	})
+}
+
+// needs package for web?
+var (
+	httpReqCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "requests_total",
+			Help:      "Total requests counter.",
+		},
+		[]string{"code"},
+	)
+
+	httpReqDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "request_duration_seconds",
+			Help:      "A histogram of latencies for requests.",
+			Buckets:   []float64{0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0},
+		},
+		[]string{},
+	)
+
+	httpReqResponseSize = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "response_size_bytes",
+			Help:      "A histogram of response sizes for requests.",
+			Buckets:   []float64{1024, 102400, 512000, 1048576},
+		},
+		[]string{},
+	)
+)
+
+func metricsWrapHandler(h http.Handler) http.Handler {
+	return promhttp.InstrumentHandlerResponseSize(httpReqResponseSize,
+		promhttp.InstrumentHandlerCounter(httpReqCounter,
+			promhttp.InstrumentHandlerDuration(httpReqDuration, h),
+		),
+	)
 }
