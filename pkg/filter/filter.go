@@ -291,12 +291,26 @@ func injectLabels(injectMemSet []*labels.Matcher) func(node promql.Node, path []
 	return func(node promql.Node, path []promql.Node) error {
 		switch n := node.(type) {
 		case *promql.VectorSelector:
-			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
+			n.LabelMatchers = replaceOrAppend(n.LabelMatchers, injectMemSet)
 		case *promql.MatrixSelector:
-			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
+			n.LabelMatchers = replaceOrAppend(n.LabelMatchers, injectMemSet)
 		}
 		return nil
 	}
+}
+
+func replaceOrAppend(labels, injects []*labels.Matcher) []*labels.Matcher {
+	for _, inj := range injects {
+		if inj.Name == "__name__" {
+			for i, l := range labels {
+				if l.Name == "__name__" {
+					labels = append(labels[:i], labels[i+1:]...)
+				}
+			}
+		}
+		labels = append(labels, inj)
+	}
+	return labels
 }
 
 func matchIntersection(mr, mm []*labels.Matcher) bool {
