@@ -234,6 +234,9 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string,
 				// create subquery with injects
 				subqueries := make([]string, 0)
 				for _, inj := range fm.filterMemMap[rID] {
+					if hasName(inj) {
+						continue
+					}
 					expr, err := promql.ParseExpr(s)
 					if err != nil {
 						return nil, err
@@ -291,27 +294,21 @@ func injectLabels(injectMemSet []*labels.Matcher) func(node promql.Node, path []
 	return func(node promql.Node, path []promql.Node) error {
 		switch n := node.(type) {
 		case *promql.VectorSelector:
-			n.Name, n.LabelMatchers = modifyNode(n.Name, n.LabelMatchers, injectMemSet)
+			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
 		case *promql.MatrixSelector:
-			n.Name, n.LabelMatchers = modifyNode(n.Name, n.LabelMatchers, injectMemSet)
+			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
 		}
 		return nil
 	}
 }
 
-func modifyNode(name string, labels, injects []*labels.Matcher) (string, []*labels.Matcher) {
+func hasName(injects []*labels.Matcher) bool {
 	for _, inj := range injects {
 		if inj.Name == "__name__" {
-			for i, l := range labels {
-				if l.Name == "__name__" {
-					labels = append(labels[:i], labels[i+1:]...)
-				}
-			}
-			name = inj.Value
+			return true
 		}
-		labels = append(labels, inj)
 	}
-	return name, labels
+	return false
 }
 
 func matchIntersection(mr, mm []*labels.Matcher) bool {
