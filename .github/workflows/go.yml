@@ -1,0 +1,21 @@
+name: Go
+
+on: push
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.13
+
+    - name: Build
+      run: GOOS=linux CGO_ENABLED=0 go build cmd/prom-liver/main.go
+
+    - name: Test
+      run: go test -v ./...
