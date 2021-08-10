@@ -144,22 +144,22 @@ func main() {
 	}
 
 	if Cfg.Web.Handlers.API {
-		api.Handle("/series", fmp.FilterMatch(rmp)).Methods("GET")
-		level.Info(logger).Log("server.uri", "/api/v1/series", "server.uri.methods", "GET")
-		api.Handle("/query", fmp.FilterQuery(rmp)).Methods("GET")
-		level.Info(logger).Log("server.uri", "/api/v1/query", "server.uri.methods", "GET")
-		api.Handle("/query_range", fmp.FilterQuery(rmp)).Methods("GET")
-		level.Info(logger).Log("server.uri", "/api/v1/query_range", "server.uri.methods", "GET")
+		api.Handle("/series", fmp.FilterMatch(rmp)).Methods("GET", "POST")
+		level.Info(logger).Log("server.uri", "/api/v1/series", "server.uri.methods", "GET,POST")
+		api.Handle("/query", fmp.FilterQuery(rmp)).Methods("GET", "POST")
+		level.Info(logger).Log("server.uri", "/api/v1/query", "server.uri.methods", "GET,POST")
+		api.Handle("/query_range", fmp.FilterQuery(rmp)).Methods("GET", "POST")
+		level.Info(logger).Log("server.uri", "/api/v1/query_range", "server.uri.methods", "GET,POST")
 	}
 	if Cfg.Web.Handlers.Federate {
 		federate.Handle("", fmp.FilterMatch(rmp)).Methods("GET")
 		level.Info(logger).Log("server.uri", "/federate", "server.uri.methods", "GET")
 	}
 	if Cfg.Web.Handlers.APIVMLabels {
-		api.Handle("/label/{label}/values", fmp.FilterMatch(rmp)).Methods("GET")
-		level.Info(logger).Log("server.uri", "/api/v1/label/*/values", "server.uri.methods", "GET")
-		api.Handle("/labels", fmp.FilterMatch(rmp)).Methods("GET")
-		level.Info(logger).Log("server.uri", "/api/v1/labels", "server.uri.methods", "GET")
+		api.Handle("/label/{label}/values", fmp.FilterMatch(rmp)).Methods("GET", "POST")
+		level.Info(logger).Log("server.uri", "/api/v1/label/*/values", "server.uri.methods", "GET,POST")
+		api.Handle("/labels", fmp.FilterMatch(rmp)).Methods("GET", "POST")
+		level.Info(logger).Log("server.uri", "/api/v1/labels", "server.uri.methods", "GET,POST")
 	}
 
 	if Cfg.Web.Handlers.ConfigReload {
