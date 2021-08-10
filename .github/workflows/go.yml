@@ -38,28 +38,35 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildx-
 
+    - name: Branch name
+      id: branch_name
+      run: |
+        echo ::set-output name=SOURCE_NAME::${GITHUB_REF#refs/*/}
+        echo ::set-output name=SOURCE_BRANCH::${GITHUB_REF#refs/heads/}
+        echo ::set-output name=SOURCE_TAG::${GITHUB_REF#refs/tags/}
+
     - name: Build and push :branch
       id: docker_build_branch
-      if: startsWith(github.ref, 'refs/heads/')
+      if: steps.branch_name.outputs.SOURCE_NAME == 'heads'
       uses: docker/build-push-action@v2
       with:
         context: ./
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/prom-liver:${GITHUB_REF#refs/heads/}
+        tags: ${{ secrets.DOCKER_USERNAME }}/prom-liver:${{ steps.branch_name.outputs.SOURCE_BRANCH }}
         builder: ${{ steps.buildx.outputs.name }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache
 
     - name: Build and push :tag and :latest
       id: docker_build_tag
-      if: startsWith(github.ref, 'refs/tags/')
+      if: steps.branch_name.outputs.SOURCE_NAME == 'tags'
       uses: docker/build-push-action@v2
       with:
         context: ./
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/prom-liver:${GITHUB_REF#refs/tags/}, ${{ secrets.DOCKER_USERNAME }}/prom-liver:latest
+        tags: ${{ secrets.DOCKER_USERNAME }}/prom-liver:${{ steps.branch_name.outputs.SOURCE_TAG }}, ${{ secrets.DOCKER_USERNAME }}/prom-liver:latest
         builder: ${{ steps.buildx.outputs.name }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache
