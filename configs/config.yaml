@@ -17,6 +17,7 @@ web:
 
 remote:
   url: "http://localhost:8428"
+  timeout: 10
   auth: 
     user: ""
     password: ""

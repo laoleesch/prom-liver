@@ -42,9 +42,10 @@ type WebHandlersConfig struct {
 
 // RemoteConfig includes configs for remote PromQL service
 type RemoteConfig struct {
-	URL  string           `yaml:"url,omitempty"`
-	Auth RemoteAuthConfig `yaml:"auth,omitempty"`
-	TLS  RemoteTLSConfig  `yaml:"tls,omitempty"`
+	URL     string           `yaml:"url,omitempty"`
+	Timeout int64            `yaml:"timeout,omitempty"`
+	Auth    RemoteAuthConfig `yaml:"auth,omitempty"`
+	TLS     RemoteTLSConfig  `yaml:"tls,omitempty"`
 }
 
 // RemoteAuthConfig includes auth configs for remote PromQL service
@@ -161,6 +162,7 @@ func DefaultConfig() Config {
 			},
 		},
 		Remote: RemoteConfig{
+			Timeout: 10,
 			Auth: RemoteAuthConfig{
 				User:     "",
 				Password: "",

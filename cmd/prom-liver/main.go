@@ -251,7 +251,7 @@ func reloadConfig(cmp *config.Manager) error {
 	if Cfg.Remote.Auth.Token != "" {
 		headers["Authorization"] = "Bearer " + Cfg.Remote.Auth.Token
 	}
-	err = newRmp.ApplyConfig(cfg.Remote.URL, cfg.Remote.TLS.Verify, cfg.Remote.TLS.CAData, headers)
+	err = newRmp.ApplyConfig(cfg.Remote.URL, cfg.Remote.Timeout, cfg.Remote.TLS.Verify, cfg.Remote.TLS.CAData, headers)
 	if err != nil {
 		return errors.Wrapf(err, "error create new remote config")
 	}

@@ -42,6 +42,7 @@ var (
 // Manager describe set of auth maps (auth: id)
 type Manager struct {
 	url     *url.URL
+	timeout time.Duration
 	Client  http.Client
 	headers http.Header
 
@@ -55,8 +56,9 @@ func NewManager(l *kitlog.Logger) *Manager {
 	defurl, _ := url.Parse("http://localhost:9090")
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: false}}
+	timeout := 10 * time.Second
 	client := http.Client{
-		Timeout:   10 * time.Second,
+		Timeout:   timeout,
 		Transport: tr,
 	}
 
@@ -64,6 +66,7 @@ func NewManager(l *kitlog.Logger) *Manager {
 	headers.Set("Content-Type", "application/x-www-form-urlencoded")
 	return &Manager{
 		url:     defurl,
+		timeout: timeout,
 		Client:  client,
 		headers: headers,
 		logger:  *l,
@@ -71,7 +74,7 @@ func NewManager(l *kitlog.Logger) *Manager {
 }
 
 // ApplyConfig apply new config
-func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, caCert []byte, headers map[string]string) error {
+func (rm *Manager) ApplyConfig(urlstr string, timeout int64, tlsVerify bool, caCert []byte, headers map[string]string) error {
 
 	rm.mtx.Lock()
 	defer rm.mtx.Unlock()
@@ -82,6 +85,8 @@ func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, caCert []byte, hea
 		return err
 	}
 	rm.url = newurl
+
+	rm.timeout = time.Duration(timeout) * time.Second
 
 	tlsConfig := &tls.Config{InsecureSkipVerify: tlsVerify}
 	if len(caCert) > 0 {
@@ -95,7 +100,7 @@ func (rm *Manager) ApplyConfig(urlstr string, tlsVerify bool, caCert []byte, hea
 
 	tr := &http.Transport{TLSClientConfig: tlsConfig}
 	rm.Client = http.Client{
-		Timeout:   10 * time.Second,
+		Timeout:   rm.timeout,
 		Transport: tr,
 	}
 
@@ -114,6 +119,7 @@ func (rm *Manager) CopyConfig(manager *Manager) error {
 	defer rm.mtx.Unlock()
 
 	rm.url = manager.url
+	rm.timeout = manager.timeout
 	rm.Client = manager.Client
 	rm.headers = manager.headers
 	rm.headers.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -133,7 +139,7 @@ func (rm *Manager) ServeReverseProxy(w http.ResponseWriter, r *http.Request) {
 	r.Header = rm.headers
 	r.Host = rm.url.Host
 	r.RequestURI = rm.url.EscapedPath() + r.RequestURI
-	level.Debug(rm.logger).Log("send uri", fmt.Sprintf("%v", r))
+	level.Debug(rm.logger).Log("proxy", fmt.Sprintf("%v", r))
 	proxy.ServeHTTP(w, r)
 }
 
@@ -161,6 +167,7 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 		Header:     rm.headers,
 		Host:       targetURL.Host,
 	}
+	level.Debug(rm.logger).Log("request", fmt.Sprintf("%v", req))
 	resp, err := rm.Client.Do(&req)
 	if err != nil {
 		return result, err
