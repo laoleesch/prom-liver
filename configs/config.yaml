@@ -5,6 +5,7 @@
 web:
   auth: true  # if 'true' then it will check basic/bearer and return HTTP 401 or set client id header. If not it will ignore Auth and try to find client id header in request.
   header: 'X-Prom-Liver-Id' # client id header name
+  timeout: 30
   check_only: false # if 'true' it will only check labels and return HTTP 403 or work as reverse-proxy
   handlers:
     api: true       # /api/v1/(query|query_range|series)

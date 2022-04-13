@@ -148,7 +148,7 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 	timer := prometheus.NewTimer(RemoteRequestDuration.WithLabelValues("single-fetch"))
 	defer timer.ObserveDuration()
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, rm.timeout)
 	defer cancel()
 
 	result = APIResponse{Status: "error"}

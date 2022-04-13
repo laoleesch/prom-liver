@@ -172,8 +172,8 @@ func main() {
 	srv := &http.Server{
 		Handler:      r,
 		Addr:         *listenAddress,
-		WriteTimeout: 15 * time.Second,
-		ReadTimeout:  15 * time.Second,
+		WriteTimeout: time.Duration(Cfg.Web.Timeout) * time.Second,
+		ReadTimeout:  time.Duration(Cfg.Web.Timeout) * time.Second,
 	}
 
 	go func() {

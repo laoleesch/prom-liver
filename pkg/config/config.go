@@ -26,6 +26,7 @@ type WebConfig struct {
 	HeaderName string `yaml:"header,omitempty"`
 	CheckMode  bool   `yaml:"check_only,omitempty"`
 	Handlers   WebHandlersConfig
+	Timeout    int64 `yaml:"timeout,omitempty"`
 	TLS        struct {
 		Crt string `yaml:"crt,omitempty"`
 		Key string `yaml:"key,omitempty"`
@@ -154,6 +155,7 @@ func DefaultConfig() Config {
 			Auth:       true,
 			HeaderName: "X-Prom-Liver-Id",
 			CheckMode:  false,
+			Timeout:    30,
 			Handlers: WebHandlersConfig{
 				API:          true,
 				Federate:     true,
