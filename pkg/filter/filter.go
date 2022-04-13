@@ -2,6 +2,7 @@ package filter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -190,6 +191,22 @@ func (fm *Manager) FilterQuery(rmp *remote.Manager) http.Handler {
 
 		mData, err := rmp.FetchMultiQueryResult(ctx, r.URL.EscapedPath(), r.URL.Query(), filteredQueries)
 		if err != nil {
+			if errors.Is(err, remote.ErrorRemoteStatusCode) {
+				status := http.StatusInternalServerError
+				switch err {
+				case remote.ErrorRemoteStatus400:
+					status = http.StatusBadRequest
+				case remote.ErrorRemoteStatus422:
+					status = http.StatusUnprocessableEntity
+				case remote.ErrorRemoteStatus503:
+					status = http.StatusServiceUnavailable
+				default:
+					status = http.StatusInternalServerError
+				}
+				http.Error(w, mData.String(), status)
+				return
+
+			}
 			http.Error(w, fmt.Sprintf("ERROR: error getting data: %v", err), http.StatusInternalServerError)
 			level.Error(fm.logger).Log("msg", "error getting data", "id", rID, "err", err)
 			return

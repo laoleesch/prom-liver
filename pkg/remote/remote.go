@@ -16,6 +16,7 @@ import (
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
@@ -38,6 +39,11 @@ var (
 		[]string{"function"},
 	)
 )
+
+var ErrorRemoteStatusCode = errors.New("unexpected HTTP status")
+var ErrorRemoteStatus400 = fmt.Errorf("%w: HTTP 400", ErrorRemoteStatusCode)
+var ErrorRemoteStatus422 = fmt.Errorf("%w: HTTP 422", ErrorRemoteStatusCode)
+var ErrorRemoteStatus503 = fmt.Errorf("%w: HTTP 503", ErrorRemoteStatusCode)
 
 // Manager describe set of auth maps (auth: id)
 type Manager struct {
@@ -151,7 +157,7 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 	ctx, cancel := context.WithTimeout(ctx, rm.timeout)
 	defer cancel()
 
-	result = APIResponse{Status: "error"}
+	result = APIResponse{}
 
 	targetURL := *rm.url
 	targetURL.RawPath = path
@@ -174,9 +180,6 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 	}
 	defer resp.Body.Close()
 
-	if !(resp.StatusCode >= 200 && resp.StatusCode < 300) {
-		return result, errors.New("unexpected HTTP status on " + resp.Request.URL.String() + ", rm.url,: " + fmt.Sprintf("%v", resp.StatusCode))
-	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return result, err
@@ -187,7 +190,18 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 		return result, err
 	}
 
-	return result, nil
+	switch resp.StatusCode {
+	case 200:
+		return result, nil
+	case 400:
+		return result, ErrorRemoteStatus400
+	case 422:
+		return result, ErrorRemoteStatus422
+	case 503:
+		return result, ErrorRemoteStatus503
+	default:
+		return ErrorAPIResponse(v1.ErrBadResponse, fmt.Errorf("%v", resp.StatusCode)), ErrorRemoteStatusCode
+	}
 
 }
 
