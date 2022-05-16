@@ -11,5 +11,5 @@ require (
 	github.com/prometheus/common v0.6.0
 	github.com/prometheus/prometheus v2.12.0+incompatible
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
-	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v2 v2.2.8
 )
