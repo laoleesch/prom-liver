@@ -205,30 +205,52 @@ func (rm *Manager) FetchResult(ctx context.Context, path string, query url.Value
 
 }
 
+type subResult struct {
+	res APIResponse
+	err error
+}
+
 // FetchMultiQueryResult returns union of subqueries
 func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query url.Values, subqueries []string) (APIResponse, error) {
 	timer := prometheus.NewTimer(RemoteRequestDuration.WithLabelValues("multi-fetch"))
 	defer timer.ObserveDuration()
 
-	var mData APIResponse
-	var result []interface{}
+	resultsChan := make(chan *subResult)
+	defer func() {
+		close(resultsChan)
+	}()
+
+	level.Debug(rm.logger).Log("multi-fetch ", fmt.Sprintf("%v", len(subqueries)))
 	for _, subq := range subqueries {
-		query.Set("query", subq)
-		data, err := rm.FetchResult(ctx, path, query)
-		if err != nil {
-			level.Error(rm.logger).Log("msg", "error getting data", err)
-			return data, err
+		go func(ctx context.Context, path string, query url.Values, subq string) {
+			subQuery := make(url.Values, len(query))
+			for k := range query {
+				subQuery[k] = query[k]
+			}
+			subQuery.Set("query", subq)
+			res, err := rm.FetchResult(ctx, path, subQuery)
+			resultsChan <- &subResult{res, err}
+		}(ctx, path, query, subq)
+	}
+
+	var mResult []interface{}
+	for i := 0; i < len(subqueries); i++ {
+		subRes := <-resultsChan
+		if subRes.err != nil {
+			level.Error(rm.logger).Log("msg", "error getting data", subRes.err)
+			return subRes.res, subRes.err
 		}
-		mData = data
-		switch data.Data.Type {
+		switch subRes.res.Data.Type {
 		case model.ValMatrix, model.ValVector:
-			result = append(result, data.Data.Result.([]interface{})...)
+			mResult = append(mResult, subRes.res.Data.Result.([]interface{})...)
 		case model.ValScalar, model.ValString:
-			result = data.Data.Result.([]interface{})
+			mResult = subRes.res.Data.Result.([]interface{})
 		}
 	}
-	if len(result) > 0 {
-		mData.Data.Result = result
+
+	mData := DefaultAPIResponse()
+	if len(mResult) > 0 {
+		mData.Data.Result = mResult
 	}
 	return mData, nil
 }

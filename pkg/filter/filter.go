@@ -11,8 +11,8 @@ import (
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/model/labels"
+	parser "github.com/prometheus/prometheus/promql/parser"
 
 	remote "github.com/laoleesch/prom-liver/pkg/remote"
 )
@@ -53,7 +53,7 @@ func (fm *Manager) ApplyConfig(idHeaderName string, injectMap map[string]string,
 	if len(injectMap) > 0 {
 		injectMemMap := make(map[string][]*labels.Matcher)
 		for id, s := range injectMap {
-			inject, err := promql.ParseMetricSelector(s)
+			inject, err := parser.ParseMetricSelector(s)
 			if err != nil {
 				return err
 			}
@@ -69,7 +69,7 @@ func (fm *Manager) ApplyConfig(idHeaderName string, injectMap map[string]string,
 		for id, matches := range filterMap {
 			matcherSets = make([][]*labels.Matcher, 0)
 			for _, s := range matches {
-				matchers, err := promql.ParseMetricSelector(s)
+				matchers, err := parser.ParseMetricSelector(s)
 				if err != nil {
 					return err
 				}
@@ -228,19 +228,19 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string,
 
 	level.Debug(fm.logger).Log("msg", "request sets", "id", rID, "value", fmt.Sprintf("%v", queries))
 	for _, s := range queries {
-		expr, err := promql.ParseExpr(s)
+		expr, err := parser.ParseExpr(s)
 		if err != nil {
 			return nil, err
 		}
 		if len(fm.injectMemMap[rID]) > 0 {
-			if err = promql.Walk(inspector(injectLabels(fm.injectMemMap[rID])), expr, nil); err != nil {
+			if err = parser.Walk(inspector(injectLabels(fm.injectMemMap[rID])), expr, nil); err != nil {
 				return nil, err
 			}
 			s = expr.String()
 		}
 
 		if len(fm.filterMemMap[rID]) > 0 {
-			if err = promql.Walk(inspector(checkLabels(fm.filterMemMap[rID])), expr, nil); err != nil {
+			if err = parser.Walk(inspector(checkLabels(fm.filterMemMap[rID])), expr, nil); err != nil {
 				// if err then not match
 
 				// if check_only then go next
@@ -254,11 +254,11 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string,
 					if hasName(inj) {
 						continue
 					}
-					expr, err := promql.ParseExpr(s)
+					expr, err := parser.ParseExpr(s)
 					if err != nil {
 						return nil, err
 					}
-					if err = promql.Walk(inspector(injectLabels(inj)), expr, nil); err != nil {
+					if err = parser.Walk(inspector(injectLabels(inj)), expr, nil); err != nil {
 						return nil, err
 					}
 					subqueries = append(subqueries, expr.String())
@@ -276,28 +276,28 @@ func (fm *Manager) labelsParseAndFilter(queries []string, rID string) ([]string,
 
 }
 
-type inspector func(promql.Node, []promql.Node) error
+type inspector func(parser.Node, []parser.Node) error
 
-func (f inspector) Visit(node promql.Node, path []promql.Node) (promql.Visitor, error) {
+func (f inspector) Visit(node parser.Node, path []parser.Node) (parser.Visitor, error) {
 	if err := f(node, path); err != nil {
 		return nil, err
 	}
 	return f, nil
 }
 
-func checkLabels(matchMemSet [][]*labels.Matcher) func(node promql.Node, path []promql.Node) error {
-	return func(node promql.Node, path []promql.Node) error {
+func checkLabels(matchMemSet [][]*labels.Matcher) func(node parser.Node, path []parser.Node) error {
+	return func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
-		case *promql.VectorSelector:
+		case *parser.VectorSelector:
 			for _, mm := range matchMemSet {
 				if matchIntersection(n.LabelMatchers, mm) {
 					return nil
 				}
 			}
 			return fmt.Errorf("not match %v", matchMemSet)
-		case *promql.MatrixSelector:
+		case *parser.MatrixSelector:
 			for _, mm := range matchMemSet {
-				if matchIntersection(n.LabelMatchers, mm) {
+				if matchIntersection(n.VectorSelector.(*parser.VectorSelector).LabelMatchers, mm) {
 					return nil
 				}
 			}
@@ -307,13 +307,13 @@ func checkLabels(matchMemSet [][]*labels.Matcher) func(node promql.Node, path []
 	}
 }
 
-func injectLabels(injectMemSet []*labels.Matcher) func(node promql.Node, path []promql.Node) error {
-	return func(node promql.Node, path []promql.Node) error {
+func injectLabels(injectMemSet []*labels.Matcher) func(node parser.Node, path []parser.Node) error {
+	return func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
-		case *promql.VectorSelector:
+		case *parser.VectorSelector:
 			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
-		case *promql.MatrixSelector:
-			n.LabelMatchers = append(n.LabelMatchers, injectMemSet...)
+		case *parser.MatrixSelector:
+			n.VectorSelector.(*parser.VectorSelector).LabelMatchers = append(n.VectorSelector.(*parser.VectorSelector).LabelMatchers, injectMemSet...)
 		}
 		return nil
 	}

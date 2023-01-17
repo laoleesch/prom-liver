@@ -12,7 +12,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.13
+        go-version: 1.18
 
     - name: Build
       run: GOOS=linux CGO_ENABLED=0 go build cmd/prom-liver/main.go

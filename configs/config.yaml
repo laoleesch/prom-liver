@@ -45,6 +45,7 @@ clients:
     inject: '{env="test"}'
     filter:
       - '{project="cadvisor"}'
+      - '{host="localhost"}'
       - 'cadvisor_version_info'
   'some':
     auth:
