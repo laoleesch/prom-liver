@@ -28,7 +28,7 @@ func DefaultAPIResponse() APIResponse {
 	return APIResponse{
 		Status: "success",
 		Data: &QueryResult{
-			Type:   model.ValVector,
+			Type:   model.ValNone,
 			Result: []string{},
 		},
 	}

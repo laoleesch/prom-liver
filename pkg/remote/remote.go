@@ -233,13 +233,18 @@ func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query
 		}(ctx, path, query, subq)
 	}
 
+	mData := DefaultAPIResponse()
+	var mErr error
+	var mErrRes APIResponse
 	var mResult []interface{}
 	for i := 0; i < len(subqueries); i++ {
 		subRes := <-resultsChan
 		if subRes.err != nil {
-			level.Error(rm.logger).Log("msg", "error getting data", subRes.err)
-			return subRes.res, subRes.err
+			mErrRes = subRes.res
+			mErr = subRes.err
 		}
+		// TODO: data type correct checks
+		mData = subRes.res
 		switch subRes.res.Data.Type {
 		case model.ValMatrix, model.ValVector:
 			mResult = append(mResult, subRes.res.Data.Result.([]interface{})...)
@@ -247,8 +252,10 @@ func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query
 			mResult = subRes.res.Data.Result.([]interface{})
 		}
 	}
-
-	mData := DefaultAPIResponse()
+	if mErr != nil {
+		level.Error(rm.logger).Log("msg", "error subquery", mErr)
+		return mErrRes, mErr
+	}
 	if len(mResult) > 0 {
 		mData.Data.Result = mResult
 	}
