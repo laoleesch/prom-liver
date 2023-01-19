@@ -215,14 +215,17 @@ func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query
 	timer := prometheus.NewTimer(RemoteRequestDuration.WithLabelValues("multi-fetch"))
 	defer timer.ObserveDuration()
 
-	resultsChan := make(chan *subResult)
+	resultsChan := make(chan *subResult, len(subqueries))
 	defer func() {
 		close(resultsChan)
 	}()
 
 	level.Debug(rm.logger).Log("multi-fetch ", fmt.Sprintf("%v", len(subqueries)))
+	wg := sync.WaitGroup{}
 	for _, subq := range subqueries {
+		wg.Add(1)
 		go func(ctx context.Context, path string, query url.Values, subq string) {
+			defer wg.Done()
 			subQuery := make(url.Values, len(query))
 			for k := range query {
 				subQuery[k] = query[k]
@@ -233,15 +236,14 @@ func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query
 		}(ctx, path, query, subq)
 	}
 
+	wg.Wait()
 	mData := DefaultAPIResponse()
-	var mErr error
-	var mErrRes APIResponse
 	var mResult []interface{}
 	for i := 0; i < len(subqueries); i++ {
 		subRes := <-resultsChan
 		if subRes.err != nil {
-			mErrRes = subRes.res
-			mErr = subRes.err
+			level.Error(rm.logger).Log("msg", "error subquery", subRes.err)
+			return subRes.res, subRes.err
 		}
 		// TODO: data type correct checks
 		mData = subRes.res
@@ -251,10 +253,6 @@ func (rm *Manager) FetchMultiQueryResult(ctx context.Context, path string, query
 		case model.ValScalar, model.ValString:
 			mResult = subRes.res.Data.Result.([]interface{})
 		}
-	}
-	if mErr != nil {
-		level.Error(rm.logger).Log("msg", "error subquery", mErr)
-		return mErrRes, mErr
 	}
 	if len(mResult) > 0 {
 		mData.Data.Result = mResult
