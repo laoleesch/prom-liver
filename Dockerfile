@@ -1,4 +1,4 @@
-FROM golang AS build-env
+FROM golang:1.18 AS build-env
 ENV CGO_ENABLED=0
 ADD . /src
 RUN cd /src && \
@@ -6,7 +6,7 @@ RUN cd /src && \
     go build -o prom-liver cmd/prom-liver/main.go && \
     chmod a+x prom-liver
 
-FROM golang:alpine
+FROM golang:1.18-alpine
 WORKDIR /prom-liver
 COPY --from=build-env /src/prom-liver /usr/bin/
 EXPOSE 8080/tcp

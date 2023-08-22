@@ -264,6 +264,10 @@ func (cm *Manager) loadClientsConfigFiles(newCfg Config) (Config, error) {
 			if _, ok := newCfg.Clients[id]; ok {
 				return newCfg, fmt.Errorf("duplicate client ID from files: ID=%v, file=%v", id, f)
 			}
+			if newCfg.Clients == nil {
+				all_clients := make(Clients)
+				newCfg.Clients = all_clients
+			}
 			newCfg.Clients[id] = conf
 		}
 	}
