@@ -3,5 +3,5 @@
     bearer:
       tokens: 
         - 'TESTTEST3'
-  match:
+  filter:
     - 'up{project="tester", env="test"}'

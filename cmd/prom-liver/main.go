@@ -40,6 +40,7 @@ var (
 	configFile    = kingpin.Flag("config", "Configuration file").Short('c').Default("config.yaml").String()
 	logLevel      = kingpin.Flag("loglevel", "Log filtering level").Short('l').Default("info").Enum("debug", "info", "warning", "error")
 	listenAddress = kingpin.Flag("bind", "Address to listen on.").Short('b').Default(":8080").String()
+	checkConfig   = kingpin.Flag("check", "Check config files without running service").Bool()
 
 	// Cfg global config
 	Cfg                 config.Config
@@ -87,6 +88,9 @@ func main() {
 	if err != nil {
 		level.Error(logger).Log("msg", "Error load config", "err", err)
 		os.Exit(2)
+	}
+	if *checkConfig {
+		os.Exit(0)
 	}
 
 	level.Info(logger).Log("web.auth", Cfg.Web.Auth)

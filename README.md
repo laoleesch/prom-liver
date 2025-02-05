@@ -35,6 +35,7 @@ Flags:
   -c, --config="config.yaml"  Configuration file
   -l, --loglevel=info         Log filtering level
   -b, --bind=":8080"          Address to listen on.
+      --check                 Check config files without running service
 ```
 
 Please look at [config.yaml](https://github.com/laoleesch/prom-liver/blob/master/configs/config.yaml) example
@@ -53,7 +54,7 @@ curl -X POST http://localhost:8080/-/reload
 
 ## TODO
 
-- [ ] /metrics
+- [x] /metrics
 - [ ] tests =))
 - [x] more tls options
 - [ ] not-so-shitty-code-refactoring

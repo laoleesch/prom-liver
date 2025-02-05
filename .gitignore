@@ -12,6 +12,6 @@
 *.out		
 
  # builded files		
-prom-liver		
+prom-liver
 __debug_bin
 .vscode
